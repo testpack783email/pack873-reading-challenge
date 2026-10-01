@@ -324,8 +324,18 @@ async function saveEntry(){
        return;
      }
    }else{
-     entries.push({id:Date.now(),userId:selectedUser.id,date,book,minutes,notes,modifiedBy:'Admin'});
-     showToast('Reading entry added.');
+     try{
+       await addSupabaseEntryForUser(selectedUser.uuid,date,book,minutes,notes);
+       const selectedUuid=selectedUser.uuid;
+       await loadAllSupabaseData();
+       selectedUser=users.find(u=>u.uuid===selectedUuid)||null;
+       showToast('Reading entry saved to Supabase.');
+     }catch(err){
+       const msg=String(err.message||err);
+       console.error('Pack 873 Admin reading entry save error:',err);
+       alert('Could not save entry.\n\n'+msg+'\n\nPlease take a screenshot of this message and send it to me.');
+       return;
+     }
    }
  }
  document.getElementById('entryDialog').close();
@@ -518,6 +528,23 @@ async function loadMySupabaseEntries(){
  if(!res.ok)throw new Error(rows.message||'Could not load your reading entries.');
  entries=entries.filter(e=>e.userId!==authenticatedUserId);
  rows.forEach(r=>entries.push({id:r.id,userId:authenticatedUserId,date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:'Supabase'}));
+}
+async function addSupabaseEntryForUser(targetUserUuid,date,book,minutes,notes){
+ if(!supabaseAccessToken||!targetUserUuid||!activeChallengeId)throw new Error('Supabase session is not ready. Please log in again.');
+ const res=await fetch(SUPABASE_URL+'/rest/v1/reading_entries',{
+   method:'POST',
+   headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json','Prefer':'return=representation'},
+   body:JSON.stringify({user_id:targetUserUuid,challenge_id:activeChallengeId,reading_date:date,book_title:book,minutes_read:minutes,notes:notes||null,modified_by:supabaseUserUuid})
+ });
+ const raw=await res.text();
+ let rows;
+ try{ rows=raw?JSON.parse(raw):[]; }catch(_){ rows=[]; }
+ if(!res.ok){
+   const detail=(rows&&typeof rows==='object'?(rows.message||rows.details||rows.hint||rows.code):'')||raw||'No response body';
+   throw new Error('Supabase save failed (HTTP '+res.status+'): '+detail);
+ }
+ if(!Array.isArray(rows)||!rows.length)throw new Error('Supabase returned success but no saved row was returned.');
+ return rows[0];
 }
 async function addMySupabaseEntry(date,book,minutes,notes){
  if(!supabaseAccessToken||!supabaseUserUuid||!activeChallengeId)throw new Error('Supabase session is not ready. Please log in again.');
