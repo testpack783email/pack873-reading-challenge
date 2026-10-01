@@ -152,14 +152,10 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
     <h2>⚠️ Permanently Delete User?</h2>
     <p id="permanentDeleteUserMessage" class="muted"></p>
     <p><b>This permanently deletes the user's Pack 873 account and all of their reading history. This cannot be undone.</b></p>
-    <div class="field" style="margin-top:14px">
-      <label>Type the user's name to confirm</label>
-      <input id="permanentDeleteUserName" autocomplete="off" placeholder="User name">
-    </div>
     <div id="permanentDeleteUserError" style="display:none;color:#b42318;margin-top:12px"></div>
     <div class="row" style="justify-content:flex-end;margin-top:18px">
       <button type="button" class="secondary" id="permanentDeleteUserCancelBtn">Cancel</button>
-      <button type="button" class="danger" id="permanentDeleteUserConfirmBtn" disabled>Permanently Delete</button>
+      <button type="button" class="danger" id="permanentDeleteUserConfirmBtn">Permanently Delete</button>
     </div>
   </div>
 </dialog>
@@ -264,24 +260,14 @@ function openPermanentDeleteUser(){
  pendingPermanentDeleteUserUuid=selectedUser.uuid;
  pendingPermanentDeleteUserName=selectedUser.name;
  document.getElementById('permanentDeleteUserMessage').textContent='You are about to permanently delete '+selectedUser.name+'. Their account and all reading history will be removed.';
- const input=document.getElementById('permanentDeleteUserName');
- input.value='';
  document.getElementById('permanentDeleteUserError').style.display='none';
  document.getElementById('permanentDeleteUserError').textContent='';
- document.getElementById('permanentDeleteUserConfirmBtn').disabled=true;
  document.getElementById('permanentDeleteUserDialog').showModal();
- input.focus();
 }
 
 async function permanentlyDeleteUser(){
  if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken||!pendingPermanentDeleteUserUuid)return;
- const input=document.getElementById('permanentDeleteUserName');
  const error=document.getElementById('permanentDeleteUserError');
- if(input.value.trim()!==pendingPermanentDeleteUserName){
-   error.textContent='The name does not match. Type '+pendingPermanentDeleteUserName+' exactly to continue.';
-   error.style.display='block';
-   return;
- }
  const btn=document.getElementById('permanentDeleteUserConfirmBtn');
  btn.disabled=true; btn.textContent='Deleting…'; error.style.display='none';
  try{
@@ -782,11 +768,6 @@ document.getElementById('userLoginCancelBtn').onclick=function(){cancelUserLogin
 document.getElementById('showUserPw').onchange=function(){document.getElementById('userLoginPassword').type=this.checked?'text':'password';};
 document.getElementById('userLoginPassword').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();performUserLogin();}};
 
-document.getElementById('permanentDeleteUserName').addEventListener('input',function(){
- const ok=this.value.trim()===pendingPermanentDeleteUserName && !!pendingPermanentDeleteUserUuid;
- document.getElementById('permanentDeleteUserConfirmBtn').disabled=!ok;
- document.getElementById('permanentDeleteUserError').style.display='none';
-});
 document.getElementById('permanentDeleteUserConfirmBtn').addEventListener('click',permanentlyDeleteUser);
 document.getElementById('permanentDeleteUserCancelBtn').addEventListener('click',function(){document.getElementById('permanentDeleteUserDialog').close();});
 document.getElementById('entryMinutes').addEventListener('input',updateMinutesReadable);
