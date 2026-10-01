@@ -162,6 +162,11 @@ let supabaseUserUuid=null;
 let activeChallengeId=null;
 
 const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+function todayLocalISO(){
+ const d=new Date();
+ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
+ return y+'-'+m+'-'+day;
+}
 const fmtTime=m=>`${Math.floor(m/60)}h ${m%60}m`;
 const inChallenge=e=>e.date>=challenge.start&&e.date<=challenge.end;
 function userEntries(id){return entries.filter(e=>e.userId===id&&inChallenge(e))}
@@ -260,7 +265,9 @@ function openEntry(){
  if(!selectedUser||!canAddForUser(selectedUser.id))return;
  document.getElementById('entryHeading').textContent='Add Reading Entry for '+selectedUser.name;
  document.getElementById('entryId').value='';
- document.getElementById('entryDate').value=challenge.start;
+ document.getElementById('entryDate').value=todayLocalISO();
+ const dateInput=document.getElementById('entryDate');
+ dateInput.min=challenge.start; dateInput.max=challenge.end;
  document.getElementById('entryBook').value='';
  document.getElementById('entryMinutes').value='';
  document.getElementById('entryNotes').value='';
@@ -416,7 +423,7 @@ async function addUser(){
    if(!res.ok) throw new Error(data.error||data.message||('HTTP '+res.status));
    document.getElementById('userDialog').close();
    showToast((data.message||name+' created successfully')+'. Credentials should now be stored safely.');
-   await loadLiveSupabaseData();
+   await loadAllSupabaseData();
    render();
  }catch(e){
    error.textContent='Could not create user: '+e.message;
