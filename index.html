@@ -28,7 +28,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div><h1>PACK 873 Reading Challenge</h1><small id="loginStatus">You are not logged in</small></div>
 </div>
 <div class="row"><label style="color:#fff">Logged in as</label>
-<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option></select><button class="secondary" onclick="logoutAll()">Logout</button></div></header>
+<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option></select><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
 <section id="loggedOutWelcome" class="card" style="text-align:center;padding:34px 22px">
@@ -36,7 +36,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
  <p class="muted" style="max-width:650px;margin:8px auto 18px">Sign in to view the current challenge, leaderboard, books, and reading activity.</p>
  <button type="button" onclick="openUserLoginDirect()">Sign In</button>
 </section>
-<div id="liveContent" class="hidden">
+<div id="liveContent" class="hidden" style="display:none">
 <section class="card challenge">
  <div class="row spread"><div><div class="muted">CURRENT CHALLENGE</div><h2 id="challengeTitle">September–October Reading Challenge</h2><div id="dateLabel"></div></div>
  <button id="challengeBtn" onclick="openChallenge()">⚙ Set Challenge Dates</button></div>
@@ -370,7 +370,9 @@ function updateLoggedOutView(){
  const welcome=document.getElementById('loggedOutWelcome');
  const live=document.getElementById('liveContent');
  if(welcome) welcome.classList.toggle('hidden',!loggedOut);
- if(live) live.classList.toggle('hidden',loggedOut);
+ if(live){ live.classList.toggle('hidden',loggedOut); live.style.display=loggedOut?'none':''; }
+ const logoutBtn=document.getElementById('logoutBtn');
+ if(logoutBtn) logoutBtn.classList.toggle('hidden',loggedOut);
  if(loggedOut && selectedUser) closeUser();
 }
 function changeViewer(v){
