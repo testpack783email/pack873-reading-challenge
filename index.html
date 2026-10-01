@@ -282,7 +282,9 @@ async function saveEntry(){
        await loadMySupabaseEntries();
        showToast('Reading entry saved to Supabase.');
      }catch(err){
-       alert('Could not save entry: '+(err.message||err));
+       const msg=String(err.message||err);
+       console.error('Pack 873 reading entry save error:',err);
+       alert('Could not save entry.\n\n'+msg+'\n\nPlease take a screenshot of this message and send it to me.');
        return;
      }
    }else{
@@ -424,8 +426,14 @@ async function addMySupabaseEntry(date,book,minutes,notes){
    headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json','Prefer':'return=representation'},
    body:JSON.stringify({user_id:supabaseUserUuid,challenge_id:activeChallengeId,reading_date:date,book_title:book,minutes_read:minutes,notes:notes||null,modified_by:supabaseUserUuid})
  });
- const rows=await res.json();
- if(!res.ok)throw new Error(rows.message||'Could not save the reading entry.');
+ const raw=await res.text();
+ let rows;
+ try{ rows=raw?JSON.parse(raw):[]; }catch(_){ rows=[]; }
+ if(!res.ok){
+   const detail=(rows&&typeof rows==='object'?(rows.message||rows.details||rows.hint||rows.code):'')||raw||'No response body';
+   throw new Error('Supabase save failed (HTTP '+res.status+'): '+detail);
+ }
+ if(!Array.isArray(rows)||!rows.length)throw new Error('Supabase returned success but no saved row was returned.');
  return rows[0];
 }
 async function performUserLogin(){
