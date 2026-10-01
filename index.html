@@ -206,7 +206,12 @@ function canEditExisting(){return viewer==='admin'&&adminAuthenticated}
 function renderUser(){
  let s=stats(selectedUser), canAdd=canAddForUser(selectedUser.id), canEdit=canEditExisting();
  userTitle.textContent=selectedUser.name;
- userMeta.textContent=(viewer==='admin'&&adminAuthenticated?selectedUser.email+' • ':'')+(viewer==='admin'&&adminAuthenticated?'Admin can manage all entries':(Number(viewer)===selectedUser.id?'This is your profile — you may add entries, but submitted entries are locked':'View only — you cannot change this person’s data'));
+ if(viewer==='admin'&&adminAuthenticated){
+   userMeta.innerHTML='<span>'+(selectedUser.active===false?'Inactive user':'Active user')+' • Admin can manage all entries</span> <button type="button" id="toggleUserActiveBtn" class="'+(selectedUser.active===false?'secondary':'danger')+'" style="margin-left:10px">'+(selectedUser.active===false?'Reactivate User':'Deactivate User')+'</button>';
+   const toggleBtn=document.getElementById('toggleUserActiveBtn'); if(toggleBtn)toggleBtn.onclick=toggleSelectedUserActive;
+ }else{
+   userMeta.textContent=(Number(viewer)===selectedUser.id?'This is your profile — you may add entries, but submitted entries are locked':'View only — you cannot change this person’s data');
+ }
  addEntryBtn.classList.toggle('hidden',!canAdd);
  userStats.innerHTML=`<div class="stat"><span class="muted">Challenge Time</span><b>${fmtTime(s.mins)}</b></div><div class="stat"><span class="muted">Current Streak</span><b>🔥 ${s.streak} days</b></div><div class="stat"><span class="muted">Books</span><b>${s.books.length}</b></div><div class="stat"><span class="muted">Entries</span><b>${userEntries(selectedUser.id).length}</b></div>`;
  historyBody.innerHTML=userEntries(selectedUser.id).sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<tr><td>${fmtDate(e.date)}</td><td><b>${e.book}</b></td><td>${fmtTime(e.minutes)}</td><td>${e.notes||'—'}</td><td>${e.modifiedBy}</td><td>${canEdit?`<div class="actions"><button type="button" class="history-edit" data-entry-id="${e.id}">Edit</button><button type="button" class="danger history-delete" data-entry-id="${e.id}">Delete</button></div>`:'<span class="muted">Locked after submission</span>'}</td></tr>`).join('')||'<tr><td colspan="6">No entries in this challenge.</td></tr>';
@@ -223,6 +228,34 @@ function renderUser(){
    });
  });
 }
+
+async function toggleSelectedUserActive(){
+ if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken||!selectedUser)return;
+ const makingActive=selectedUser.active===false;
+ const action=makingActive?'reactivate-user':'deactivate-user';
+ const verb=makingActive?'reactivate':'deactivate';
+ if(!makingActive && !confirm('Deactivate '+selectedUser.name+'? Their reading history will be kept, but they will not be allowed to use the Pack 873 app until reactivated.'))return;
+ const btn=document.getElementById('toggleUserActiveBtn'); if(btn){btn.disabled=true;btn.textContent=makingActive?'Reactivating…':'Deactivating…';}
+ try{
+   const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
+     method:'POST',
+     headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json'},
+     body:JSON.stringify({action,user_id:selectedUser.uuid})
+   });
+   let data={}; try{data=await res.json();}catch(_e){}
+   if(!res.ok)throw new Error(data.error||data.message||('HTTP '+res.status));
+   const selectedUuid=selectedUser.uuid;
+   await loadAllSupabaseData();
+   selectedUser=users.find(u=>u.uuid===selectedUuid)||null;
+   render();
+   if(selectedUser)renderUser(); else closeUser();
+   showToast(data.message||('User '+verb+'d successfully'));
+ }catch(e){
+   alert('Could not '+verb+' user: '+e.message);
+   if(btn){btn.disabled=false;btn.textContent=makingActive?'Reactivate User':'Deactivate User';}
+ }
+}
+
 function openEntry(){
  if(!selectedUser||!canAddForUser(selectedUser.id))return;
  document.getElementById('entryHeading').textContent='Add Reading Entry for '+selectedUser.name;
@@ -440,13 +473,15 @@ async function loadAllSupabaseData(){
  if(!supabaseAccessToken||!activeChallengeId)return;
  const headers={'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Accept':'application/json'};
  const [profilesRes,entriesRes]=await Promise.all([
-   fetch(SUPABASE_URL+'/rest/v1/profiles?active=eq.true&select=id,display_name,role&order=display_name.asc',{headers}),
+   fetch(SUPABASE_URL+'/rest/v1/profiles?select=id,display_name,role,active&order=display_name.asc',{headers}),
    fetch(SUPABASE_URL+'/rest/v1/reading_entries?challenge_id=eq.'+encodeURIComponent(activeChallengeId)+'&select=id,user_id,reading_date,book_title,minutes_read,notes,modified_at,modified_by&order=reading_date.desc',{headers})
  ]);
  const profiles=await profilesRes.json(); const rows=await entriesRes.json();
  if(!profilesRes.ok)throw new Error(profiles.message||'Could not load Pack 873 users.');
  if(!entriesRes.ok)throw new Error(rows.message||'Could not load reading entries.');
- users=profiles.filter(p=>p.role!=='admin').map((p,i)=>({id:i+1,uuid:p.id,name:p.display_name,email:''}));
+ const callerIsAdmin=profiles.some(p=>p.id===supabaseUserUuid&&p.role==='admin'&&p.active===true);
+ const visibleProfiles=profiles.filter(p=>p.role!=='admin'&&(callerIsAdmin||p.active===true));
+ users=visibleProfiles.map((p,i)=>({id:i+1,uuid:p.id,name:p.display_name,email:'',active:p.active!==false}));
  const byUuid=new Map(users.map(u=>[u.uuid,u.id]));
  entries=rows.filter(r=>byUuid.has(r.user_id)).map(r=>({id:r.id,userId:byUuid.get(r.user_id),date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:r.modified_by===r.user_id?'User':'Admin'}));
  const me=users.find(u=>u.uuid===supabaseUserUuid);
