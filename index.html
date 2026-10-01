@@ -28,7 +28,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div><h1>PACK 873 Reading Challenge</h1><small id="loginStatus">You are not logged in</small></div>
 </div>
 <div class="row"><label style="color:#fff">Logged in as</label>
-<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option></select><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
+<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option><option value="adminlogin">Admin Login</option></select><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
 <section id="loggedOutWelcome" class="card" style="text-align:center;padding:34px 22px">
@@ -108,9 +108,9 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <dialog id="adminLoginDialog">
 <div class="modal">
 <h2>🔐 Admin Login</h2>
-<p class="muted">Admin access is protected in this prototype.</p>
+<p class="muted">Sign in with your Pack 873 Admin email and password.</p>
 <div class="formgrid">
-<div class="field full"><label>Username</label><input id="adminUsername" autocomplete="username" value=""></div>
+<div class="field full"><label>Email</label><input id="adminUsername" type="email" autocomplete="username" value="" placeholder="Admin email"></div>
 <div class="field full"><label>Password</label><input id="adminPassword" type="password" autocomplete="current-password" value="">
 <label style="margin-top:6px;color:#697386"><input type="checkbox" id="showPw"> Show password</label></div>
 </div>
@@ -119,7 +119,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <button type="button" class="secondary" id="adminCancelBtn">Cancel</button>
 <button type="button" id="adminLoginBtn">Login</button>
 </div>
-<p class="muted" style="font-size:12px;margin-top:15px"><b>Demo login:</b> admin / Read2026!</p>
+<p class="muted" style="font-size:12px;margin-top:15px">Use your real Supabase Admin account. No Admin password is stored in this webpage.</p>
 </div>
 </dialog>
 
@@ -378,6 +378,11 @@ function updateLoggedOutView(){
 function changeViewer(v){
  const select=document.getElementById('roleSelect');
  if(v==='loggedout'){logoutAll();return;}
+ if(v==='adminlogin'){
+   previousViewer=viewer; select.value=viewer;
+   document.getElementById('adminUsername').value=''; document.getElementById('adminPassword').value='';
+   document.getElementById('loginError').style.display='none'; document.getElementById('adminLoginDialog').showModal(); return;
+ }
  if(v==='userlogin'){
    previousViewer=viewer; select.value=viewer;
    document.getElementById('userLoginPrompt').textContent='Sign in with your Pack 873 email and password.';
@@ -419,10 +424,16 @@ async function loadAllSupabaseData(){
 function rebuildViewerOptions(){
  const select=document.getElementById('roleSelect');
  select.innerHTML='<option value="loggedout">-- Logged Out --</option>';
+ if(adminAuthenticated){
+   const a=document.createElement('option');a.value='admin';a.textContent='Admin';select.appendChild(a);select.value='admin';return;
+ }
  if(authenticatedUserId){
    users.forEach(u=>{const o=document.createElement('option');o.value=String(u.id);o.textContent=u.name;select.appendChild(o);});
+   select.value=String(authenticatedUserId);return;
  }
- select.value=viewer==='loggedout'?'loggedout':String(authenticatedUserId||'loggedout');
+ const u=document.createElement('option');u.value='userlogin';u.textContent='User Login';select.appendChild(u);
+ const a=document.createElement('option');a.value='adminlogin';a.textContent='Admin Login';select.appendChild(a);
+ select.value='loggedout';
 }
 function clearLiveData(){users=[];entries=[];challenge={start:'2026-09-01',end:'2026-10-31'};rebuildViewerOptions();}
 async function loadMySupabaseEntries(){
@@ -486,24 +497,27 @@ function logoutAll(){
  localStorage.removeItem('pack873_session'); viewer='loggedout';previousViewer='loggedout'; clearLiveData();
  document.getElementById('roleSelect').value='loggedout'; closeUser();render();showToast('Logged out successfully.');
 }
-function performAdminLogin(){
- const u=document.getElementById('adminUsername').value.trim().toLowerCase();
- const pw=document.getElementById('adminPassword').value;
+async function performAdminLogin(){
+ const email=document.getElementById('adminUsername').value.trim();
+ const password=document.getElementById('adminPassword').value;
  const error=document.getElementById('loginError');
- if(u==='admin' && pw==='Read2026!'){
-   adminAuthenticated=true;
-   viewer='admin';
-   previousViewer='admin';
-   error.style.display='none';
-   document.getElementById('adminLoginDialog').close();
-   document.getElementById('roleSelect').value='admin';
-   closeUser();
-   render();
-   showToast('Admin login successful.');
-   return true;
- }
- error.style.display='block';
- return false;
+ const btn=document.getElementById('adminLoginBtn');
+ error.style.display='none';
+ if(!email||!password){error.innerHTML='<b>Enter your Admin email and password.</b>';error.style.display='block';return false;}
+ btn.disabled=true;btn.textContent='Signing in…';
+ try{
+   const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+   const auth=await authRes.json();
+   if(!authRes.ok||!auth.access_token)throw new Error(auth.error_description||auth.msg||'Login failed.');
+   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+   const profiles=await profileRes.json();if(!profileRes.ok)throw new Error(profiles.message||'Could not load Admin profile.');
+   const profile=profiles[0];if(!profile)throw new Error('No Pack 873 profile is linked to this login.');if(!profile.active)throw new Error('This Admin account is inactive.');if(profile.role!=='admin')throw new Error('This account does not have Admin permission.');
+   supabaseAccessToken=auth.access_token;supabaseUserUuid=auth.user.id;adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';
+   await loadSupabaseChallenge();await loadAllSupabaseData();
+   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
+   rebuildViewerOptions();document.getElementById('adminLoginDialog').close();closeUser();render();showToast('Admin login successful.');return true;
+ }catch(err){error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>';error.style.display='block';return false;}
+ finally{btn.disabled=false;btn.textContent='Login';}
 }
 function cancelAdminLogin(){
  document.getElementById('adminLoginDialog').close();
@@ -567,8 +581,12 @@ async function restoreSupabaseSession(){
    const saved=JSON.parse(raw); if(!saved.refresh_token)return;
    const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:saved.refresh_token})});
    const auth=await res.json(); if(!res.ok||!auth.access_token)throw new Error('Session expired');
-   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id; await loadSupabaseChallenge(); await loadAllSupabaseData();
-   const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Profile not found'); authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer;
+   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
+   const pr=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+   const parr=await pr.json();if(!pr.ok||!parr[0]||!parr[0].active)throw new Error('Profile not found or inactive');
+   await loadSupabaseChallenge(); await loadAllSupabaseData();
+   if(parr[0].role==='admin'){adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';}
+   else{adminAuthenticated=false;const me=users.find(u=>u.uuid===supabaseUserUuid);if(!me)throw new Error('Profile not found');authenticatedUserId=me.id;viewer=String(me.id);previousViewer=viewer;}
    localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id})); rebuildViewerOptions(); render();
  }catch(e){localStorage.removeItem('pack873_session'); clearLiveData(); viewer='loggedout'; render();}
 }
