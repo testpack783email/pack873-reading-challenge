@@ -84,8 +84,16 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div id="challengeError" style="display:none;color:#b42318;margin-top:12px"></div>
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="challengeCancelBtn">Cancel</button><button type="button" id="challengeSaveBtn">Save Dates</button></div></div></dialog>
 
-<dialog id="userDialog"><div class="modal"><h2>Add New User</h2><p class="muted">Demo account creation. In the real app the user will receive an invite and set their own password.</p>
-<div class="formgrid"><div class="field"><label>Name</label><input id="newName"></div><div class="field"><label>Email</label><input id="newEmail" type="email"></div></div>
+<dialog id="userDialog"><div class="modal"><h2>Add New User</h2>
+<p class="muted">Create a real Pack 873 account. The user can sign in immediately after creation.</p>
+<div class="formgrid">
+<div class="field"><label>Name</label><input id="newName" autocomplete="off"></div>
+<div class="field"><label>Email</label><input id="newEmail" type="email" autocomplete="off"></div>
+<div class="field"><label>Temporary Password</label><input id="newPassword" type="password" autocomplete="new-password"><label style="margin-top:6px;color:#697386"><input type="checkbox" id="showNewPassword"> Show password</label></div>
+<div class="field"><label>Role</label><select id="newRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+</div>
+<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff8e6"><b>🔐 Save the email and temporary password before creating the user.</b><div class="muted" style="margin-top:5px">The password cannot be viewed from this Admin page afterward.</div></div>
+<div id="userCreateError" style="display:none;color:#b42318;margin-top:12px"></div>
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="userCancelBtn">Cancel</button><button type="button" id="userSaveBtn">Create User</button></div></div></dialog>
 <dialog id="userLoginDialog">
 <div class="modal">
@@ -345,20 +353,44 @@ function openAddUser(){
  if(viewer!=='admin'||!adminAuthenticated)return;
  document.getElementById('newName').value='';
  document.getElementById('newEmail').value='';
+ document.getElementById('newPassword').value='';
+ document.getElementById('newRole').value='user';
+ document.getElementById('showNewPassword').checked=false;
+ document.getElementById('newPassword').type='password';
+ const error=document.getElementById('userCreateError');
+ error.style.display='none'; error.textContent='';
  document.getElementById('userDialog').showModal();
 }
-function addUser(){
- if(viewer!=='admin'||!adminAuthenticated){alert('Admin login required.');return;}
+async function addUser(){
+ if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken){alert('Admin login required.');return;}
  const name=document.getElementById('newName').value.trim();
  const email=document.getElementById('newEmail').value.trim();
- if(!name||!email){alert('Name and email are required.');return;}
- const id=Math.max(0,...users.map(u=>Number(u.id)))+1;
- users.push({id,name,email});
- const select=document.getElementById('roleSelect');
- const opt=document.createElement('option'); opt.value=String(id); opt.textContent=name; select.appendChild(opt);
- document.getElementById('userDialog').close();
- showToast(name+' added successfully.');
- render();
+ const password=document.getElementById('newPassword').value;
+ const role=document.getElementById('newRole').value==='admin'?'admin':'user';
+ const error=document.getElementById('userCreateError');
+ error.style.display='none'; error.textContent='';
+ if(!name||!email||!password){error.textContent='Name, email and temporary password are required.';error.style.display='block';return;}
+ if(password.length<8){error.textContent='Temporary password must be at least 8 characters.';error.style.display='block';return;}
+ const btn=document.getElementById('userSaveBtn');
+ btn.disabled=true; btn.textContent='Creating…';
+ try{
+   const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
+     method:'POST',
+     headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json'},
+     body:JSON.stringify({action:'create-user',display_name:name,email,password,role})
+   });
+   let data={}; try{data=await res.json();}catch(_e){}
+   if(!res.ok) throw new Error(data.error||data.message||('HTTP '+res.status));
+   document.getElementById('userDialog').close();
+   showToast((data.message||name+' created successfully')+'. Credentials should now be stored safely.');
+   await loadLiveSupabaseData();
+   render();
+ }catch(e){
+   error.textContent='Could not create user: '+e.message;
+   error.style.display='block';
+ }finally{
+   btn.disabled=false; btn.textContent='Create User';
+ }
 }
 function openUserLoginDirect(){
  const select=document.getElementById('roleSelect');
@@ -594,6 +626,7 @@ document.getElementById('adminPassword').onkeydown=function(e){
 document.getElementById('challengeSaveBtn').onclick=function(){saveChallenge();};
 document.getElementById('challengeCancelBtn').onclick=function(){document.getElementById('challengeDialog').close();};
 document.getElementById('userSaveBtn').onclick=function(){addUser();};
+document.getElementById('showNewPassword').onchange=function(){document.getElementById('newPassword').type=this.checked?'text':'password';};
 document.getElementById('userCancelBtn').onclick=function(){document.getElementById('userDialog').close();};
 document.getElementById('entrySaveBtn').onclick=function(){saveEntry();};
 document.getElementById('entryCancelBtn').onclick=function(){document.getElementById('entryDialog').close();};
