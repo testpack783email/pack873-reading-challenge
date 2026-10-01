@@ -163,6 +163,8 @@ let authenticatedUserId=null;
 const SUPABASE_URL='https://zhsjyruwqvsliiofjqca.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_MiL6D0pvBXe-KujTUk0Pyw_BgaitrgG';
 let supabaseAccessToken=null;
+let supabaseUserUuid=null;
+let activeChallengeId=null;
 
 const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const fmtTime=m=>`${Math.floor(m/60)}h ${m%60}m`;
@@ -259,7 +261,7 @@ function updateMinutesReadable(){
  const input=document.getElementById('entryMinutes');
  if(output&&input)output.textContent=readableMinutes(input.value);
 }
-function saveEntry(){
+async function saveEntry(){
  if(!selectedUser)return;
  const id=Number(document.getElementById('entryId').value||0);
  if(id&&(viewer!=='admin'||!adminAuthenticated)){alert('Only an Admin can edit a submitted entry.');return;}
@@ -274,8 +276,19 @@ function saveEntry(){
    Object.assign(e,{date,book,minutes,notes,modifiedBy:'Admin'});
    showToast('Entry updated by Admin.');
  }else{
-   entries.push({id:Date.now(),userId:selectedUser.id,date,book,minutes,notes,modifiedBy:(viewer==='admin'?'Admin':selectedUser.name)});
-   showToast('Reading entry added.');
+   if(viewer!=='admin' && authenticatedUserId===selectedUser.id){
+     try{
+       await addMySupabaseEntry(date,book,minutes,notes);
+       await loadMySupabaseEntries();
+       showToast('Reading entry saved to Supabase.');
+     }catch(err){
+       alert('Could not save entry: '+(err.message||err));
+       return;
+     }
+   }else{
+     entries.push({id:Date.now(),userId:selectedUser.id,date,book,minutes,notes,modifiedBy:'Admin'});
+     showToast('Reading entry added.');
+   }
  }
  document.getElementById('entryDialog').close();
  render();
@@ -384,6 +397,37 @@ function changeViewer(v){
  document.getElementById('userLoginDialog').dataset.userId=String(id);
  document.getElementById('userLoginDialog').showModal();
 }
+async function loadSupabaseChallenge(){
+ if(!supabaseAccessToken)return;
+ const res=await fetch(SUPABASE_URL+'/rest/v1/challenges?active=eq.true&select=id,name,start_date,end_date&order=id.desc&limit=1',{
+   headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Accept':'application/json'}
+ });
+ const rows=await res.json();
+ if(!res.ok)throw new Error(rows.message||'Could not load the active challenge.');
+ if(!rows.length)throw new Error('No active reading challenge was found.');
+ activeChallengeId=rows[0].id;
+ challenge.start=rows[0].start_date; challenge.end=rows[0].end_date;
+}
+async function loadMySupabaseEntries(){
+ if(!supabaseAccessToken||!supabaseUserUuid||!activeChallengeId||!authenticatedUserId)return;
+ const url=SUPABASE_URL+'/rest/v1/reading_entries?user_id=eq.'+encodeURIComponent(supabaseUserUuid)+'&challenge_id=eq.'+encodeURIComponent(activeChallengeId)+'&select=id,reading_date,book_title,minutes_read,notes,modified_at&order=reading_date.desc';
+ const res=await fetch(url,{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Accept':'application/json'}});
+ const rows=await res.json();
+ if(!res.ok)throw new Error(rows.message||'Could not load your reading entries.');
+ entries=entries.filter(e=>e.userId!==authenticatedUserId);
+ rows.forEach(r=>entries.push({id:r.id,userId:authenticatedUserId,date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:'Supabase'}));
+}
+async function addMySupabaseEntry(date,book,minutes,notes){
+ if(!supabaseAccessToken||!supabaseUserUuid||!activeChallengeId)throw new Error('Supabase session is not ready. Please log in again.');
+ const res=await fetch(SUPABASE_URL+'/rest/v1/reading_entries',{
+   method:'POST',
+   headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json','Prefer':'return=representation'},
+   body:JSON.stringify({user_id:supabaseUserUuid,challenge_id:activeChallengeId,reading_date:date,book_title:book,minutes_read:minutes,notes:notes||null,modified_by:supabaseUserUuid})
+ });
+ const rows=await res.json();
+ if(!res.ok)throw new Error(rows.message||'Could not save the reading entry.');
+ return rows[0];
+}
 async function performUserLogin(){
  const dlg=document.getElementById('userLoginDialog');
  const requestedId=Number(dlg.dataset.userId);
@@ -413,7 +457,10 @@ async function performUserLogin(){
    if(profile.role==='admin') throw new Error('This is an admin account. Admin Supabase login will be connected in the next stage.');
    if(!requestedPerson || requestedPerson.name.toLowerCase()!==profile.display_name.toLowerCase()) throw new Error('This login belongs to '+profile.display_name+', not '+(requestedPerson?requestedPerson.name:'the selected reader')+'.');
    supabaseAccessToken=auth.access_token;
+   supabaseUserUuid=auth.user.id;
    authenticatedUserId=requestedId; adminAuthenticated=false;
+   await loadSupabaseChallenge();
+   await loadMySupabaseEntries();
    viewer=String(requestedId); previousViewer=viewer;
    dlg.close(); document.getElementById('roleSelect').value=viewer;
    closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
@@ -425,7 +472,7 @@ function cancelUserLogin(){
  document.getElementById('roleSelect').value=viewer;
 }
 function logoutAll(){
- adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;
+ adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;supabaseUserUuid=null;activeChallengeId=null;
  viewer='loggedout';previousViewer='loggedout';
  document.getElementById('roleSelect').value='loggedout';
  closeUser();render();showToast('Logged out successfully.');
