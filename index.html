@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reading Challenge – User & Admin Demo</title>
+<title>Pack 873 Reading Challenge</title>
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--ink:#17202a;--muted:#697386;--line:#e3e7ee;--accent:#23395d;--soft:#eef3fb;--danger:#b42318}
 *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
@@ -97,7 +97,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <h2>🔐 User Login</h2>
 <p class="muted" id="userLoginPrompt">Login to access your reading profile.</p>
 <div class="formgrid">
-<div class="field full"><label>Username</label><input id="userLoginUsername" autocomplete="username"></div>
+<div class="field full"><label>Email</label><input id="userLoginUsername" type="email" autocomplete="username" placeholder="Your login email"></div>
 <div class="field full"><label>Password</label><input id="userLoginPassword" type="password" autocomplete="current-password">
 <label style="margin-top:6px;color:#697386"><input type="checkbox" id="showUserPw"> Show password</label></div>
 </div>
@@ -106,7 +106,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <button type="button" class="secondary" id="userLoginCancelBtn">Cancel</button>
 <button type="button" id="userLoginBtn">Login</button>
 </div>
-<p class="muted" style="font-size:12px;margin-top:15px"><b>Demo:</b> username is the person's first name in lowercase; password is <code>Read873!</code>.<br>Example: John → <code>john</code> / <code>Read873!</code></p>
+<p class="muted" style="font-size:12px;margin-top:15px">Use the email address and password assigned to your Pack 873 account. Your email is not shown to other readers.</p>
 </div>
 </dialog>
 
@@ -160,6 +160,9 @@ let viewer='loggedout';
 let previousViewer='loggedout';
 let adminAuthenticated=false;
 let authenticatedUserId=null;
+const SUPABASE_URL='https://zhsjyruwqvsliiofjqca.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY='sb_publishable_MiL6D0pvBXe-KujTUk0Pyw_BgaitrgG';
+let supabaseAccessToken=null;
 
 const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const fmtTime=m=>`${Math.floor(m/60)}h ${m%60}m`;
@@ -381,26 +384,48 @@ function changeViewer(v){
  document.getElementById('userLoginDialog').dataset.userId=String(id);
  document.getElementById('userLoginDialog').showModal();
 }
-function performUserLogin(){
+async function performUserLogin(){
  const dlg=document.getElementById('userLoginDialog');
- const id=Number(dlg.dataset.userId);
- const person=users.find(u=>u.id===id);
- const username=document.getElementById('userLoginUsername').value.trim().toLowerCase();
+ const requestedId=Number(dlg.dataset.userId);
+ const requestedPerson=users.find(u=>u.id===requestedId);
+ const email=document.getElementById('userLoginUsername').value.trim();
  const password=document.getElementById('userLoginPassword').value;
- if(person && username===person.name.toLowerCase() && password==='Read873!'){
-   authenticatedUserId=id; adminAuthenticated=false;
-   viewer=String(id); previousViewer=viewer;
+ const error=document.getElementById('userLoginError');
+ const btn=document.getElementById('userLoginBtn');
+ error.style.display='none';
+ if(!email || !password){ error.innerHTML='<b>Enter your email and password.</b>'; error.style.display='block'; return; }
+ btn.disabled=true; btn.textContent='Signing in…';
+ try{
+   const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+     method:'POST', headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},
+     body:JSON.stringify({email,password})
+   });
+   const auth=await authRes.json();
+   if(!authRes.ok || !auth.access_token) throw new Error(auth.error_description||auth.msg||'Login failed.');
+   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{
+     headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}
+   });
+   const profiles=await profileRes.json();
+   if(!profileRes.ok) throw new Error(profiles.message||'Could not load your Pack 873 profile.');
+   const profile=profiles[0];
+   if(!profile) throw new Error('No Pack 873 profile is linked to this login.');
+   if(!profile.active) throw new Error('This Pack 873 account is inactive.');
+   if(profile.role==='admin') throw new Error('This is an admin account. Admin Supabase login will be connected in the next stage.');
+   if(!requestedPerson || requestedPerson.name.toLowerCase()!==profile.display_name.toLowerCase()) throw new Error('This login belongs to '+profile.display_name+', not '+(requestedPerson?requestedPerson.name:'the selected reader')+'.');
+   supabaseAccessToken=auth.access_token;
+   authenticatedUserId=requestedId; adminAuthenticated=false;
+   viewer=String(requestedId); previousViewer=viewer;
    dlg.close(); document.getElementById('roleSelect').value=viewer;
-   closeUser(); render(); showToast('Logged in as '+person.name+'.'); return;
- }
- document.getElementById('userLoginError').style.display='block';
+   closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
+ }catch(err){ error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>'; error.style.display='block'; }
+ finally{ btn.disabled=false; btn.textContent='Login'; }
 }
 function cancelUserLogin(){
  document.getElementById('userLoginDialog').close();
  document.getElementById('roleSelect').value=viewer;
 }
 function logoutAll(){
- adminAuthenticated=false;authenticatedUserId=null;
+ adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;
  viewer='loggedout';previousViewer='loggedout';
  document.getElementById('roleSelect').value='loggedout';
  closeUser();render();showToast('Logged out successfully.');
