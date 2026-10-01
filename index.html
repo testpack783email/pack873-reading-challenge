@@ -28,19 +28,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div><h1>PACK 873 Reading Challenge</h1><small id="loginStatus">You are not logged in</small></div>
 </div>
 <div class="row"><label style="color:#fff">Logged in as</label>
-<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option>
-<option value="admin">Admin</option>
-<option value="2">Alex</option>
-<option value="1">Priya</option>
-<option value="3">John</option>
-<option value="4">Sarah</option>
-<option value="5">Mike</option>
-<option value="6">Neha</option>
-<option value="7">David</option>
-<option value="8">Anita</option>
-<option value="9">Rahul</option>
-<option value="10">Emily</option>
-</select><button class="secondary" onclick="logoutAll()">Logout</button></div></header>
+<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option></select><button class="secondary" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
 <section class="card challenge">
@@ -144,16 +132,8 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 
 <script>
 let challenge={start:'2026-09-01',end:'2026-10-31'};
-let users=[
-{id:1,name:'Priya',email:'priya@example.com'},{id:2,name:'Alex',email:'alex@example.com'},{id:3,name:'John',email:'john@example.com'},{id:4,name:'Sarah',email:'sarah@example.com'},{id:5,name:'Mike',email:'mike@example.com'},{id:6,name:'Neha',email:'neha@example.com'},{id:7,name:'David',email:'david@example.com'},{id:8,name:'Anita',email:'anita@example.com'},{id:9,name:'Rahul',email:'rahul@example.com'},{id:10,name:'Emily',email:'emily@example.com'}
-];
-let entries=[
-[1,'2026-09-30','The Psychology of Money',95,'Ch. 8–10'],[1,'2026-09-29','The Psychology of Money',80,''],[1,'2026-09-28','Atomic Habits',70,'Finished'],[1,'2026-09-27','Atomic Habits',90,''],[1,'2026-09-26','Atomic Habits',65,''],[1,'2026-09-25','Ikigai',75,''],
-[2,'2026-09-30','Atomic Habits',80,'Habit stacking'],[2,'2026-09-29','Atomic Habits',65,''],[2,'2026-09-28','Deep Work',75,''],[2,'2026-09-27','Deep Work',70,''],[2,'2026-09-26','Deep Work',60,''],
-[3,'2026-09-30','Sapiens',75,''],[3,'2026-09-29','Sapiens',70,''],[3,'2026-09-28','Sapiens',65,''],[3,'2026-09-27','The Alchemist',60,''],
-[4,'2026-09-30','Deep Work',60,''],[4,'2026-09-29','Deep Work',55,''],[4,'2026-09-28','Ikigai',50,''],
-[5,'2026-09-30','The Alchemist',45,''],[5,'2026-09-29','The Alchemist',40,''],[6,'2026-09-30','Make Time',55,''],[6,'2026-09-29','Make Time',50,''],[7,'2026-09-30','Essentialism',65,''],[7,'2026-09-29','Essentialism',55,''],[8,'2026-09-30','Ikigai',40,''],[9,'2026-09-30','Deep Work',50,''],[9,'2026-09-29','Deep Work',45,''],[10,'2026-09-30','Atomic Habits',35,'']
-].map((e,i)=>({id:i+1,userId:e[0],date:e[1],book:e[2],minutes:e[3],notes:e[4],modifiedBy:'User'}));
+let users=[];
+let entries=[];
 let selectedUser=null;
 let pendingDeleteId=null;
 let viewer='loggedout';
@@ -375,29 +355,15 @@ function addUser(){
 function changeViewer(v){
  const select=document.getElementById('roleSelect');
  if(v==='loggedout'){logoutAll();return;}
- if(v==='admin'){
-   if(adminAuthenticated){viewer='admin';previousViewer='admin';closeUser();render();return;}
-   previousViewer=viewer;
-   select.value=viewer;
-   document.getElementById('adminUsername').value='';
-   document.getElementById('adminPassword').value='';
-   document.getElementById('loginError').style.display='none';
-   document.getElementById('adminLoginDialog').showModal();
-   return;
+ if(v==='userlogin'){
+   previousViewer=viewer; select.value=viewer;
+   document.getElementById('userLoginPrompt').textContent='Sign in with your Pack 873 email and password.';
+   document.getElementById('userLoginUsername').value=''; document.getElementById('userLoginPassword').value='';
+   document.getElementById('userLoginError').style.display='none'; document.getElementById('userLoginDialog').showModal(); return;
  }
  const id=Number(v);
- if(authenticatedUserId===id){
-   viewer=String(id);previousViewer=viewer;closeUser();render();return;
- }
- previousViewer=viewer;
+ if(authenticatedUserId===id){viewer=String(id);previousViewer=viewer;closeUser();render();return;}
  select.value=viewer;
- const person=users.find(u=>u.id===id);
- document.getElementById('userLoginPrompt').textContent='Login as '+(person?person.name:'User')+' to access View / Add Entry.';
- document.getElementById('userLoginUsername').value='';
- document.getElementById('userLoginPassword').value='';
- document.getElementById('userLoginError').style.display='none';
- document.getElementById('userLoginDialog').dataset.userId=String(id);
- document.getElementById('userLoginDialog').showModal();
 }
 async function loadSupabaseChallenge(){
  if(!supabaseAccessToken)return;
@@ -410,6 +376,32 @@ async function loadSupabaseChallenge(){
  activeChallengeId=rows[0].id;
  challenge.start=rows[0].start_date; challenge.end=rows[0].end_date;
 }
+async function loadAllSupabaseData(){
+ if(!supabaseAccessToken||!activeChallengeId)return;
+ const headers={'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Accept':'application/json'};
+ const [profilesRes,entriesRes]=await Promise.all([
+   fetch(SUPABASE_URL+'/rest/v1/profiles?active=eq.true&select=id,display_name,role&order=display_name.asc',{headers}),
+   fetch(SUPABASE_URL+'/rest/v1/reading_entries?challenge_id=eq.'+encodeURIComponent(activeChallengeId)+'&select=id,user_id,reading_date,book_title,minutes_read,notes,modified_at,modified_by&order=reading_date.desc',{headers})
+ ]);
+ const profiles=await profilesRes.json(); const rows=await entriesRes.json();
+ if(!profilesRes.ok)throw new Error(profiles.message||'Could not load Pack 873 users.');
+ if(!entriesRes.ok)throw new Error(rows.message||'Could not load reading entries.');
+ users=profiles.filter(p=>p.role!=='admin').map((p,i)=>({id:i+1,uuid:p.id,name:p.display_name,email:''}));
+ const byUuid=new Map(users.map(u=>[u.uuid,u.id]));
+ entries=rows.filter(r=>byUuid.has(r.user_id)).map(r=>({id:r.id,userId:byUuid.get(r.user_id),date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:r.modified_by===r.user_id?'User':'Admin'}));
+ const me=users.find(u=>u.uuid===supabaseUserUuid);
+ if(me)authenticatedUserId=me.id;
+ rebuildViewerOptions();
+}
+function rebuildViewerOptions(){
+ const select=document.getElementById('roleSelect');
+ select.innerHTML='<option value="loggedout">-- Logged Out --</option>';
+ if(authenticatedUserId){
+   users.forEach(u=>{const o=document.createElement('option');o.value=String(u.id);o.textContent=u.name;select.appendChild(o);});
+ }
+ select.value=viewer==='loggedout'?'loggedout':String(authenticatedUserId||'loggedout');
+}
+function clearLiveData(){users=[];entries=[];challenge={start:'2026-09-01',end:'2026-10-31'};rebuildViewerOptions();}
 async function loadMySupabaseEntries(){
  if(!supabaseAccessToken||!supabaseUserUuid||!activeChallengeId||!authenticatedUserId)return;
  const url=SUPABASE_URL+'/rest/v1/reading_entries?user_id=eq.'+encodeURIComponent(supabaseUserUuid)+'&challenge_id=eq.'+encodeURIComponent(activeChallengeId)+'&select=id,reading_date,book_title,minutes_read,notes,modified_at&order=reading_date.desc';
@@ -438,8 +430,6 @@ async function addMySupabaseEntry(date,book,minutes,notes){
 }
 async function performUserLogin(){
  const dlg=document.getElementById('userLoginDialog');
- const requestedId=Number(dlg.dataset.userId);
- const requestedPerson=users.find(u=>u.id===requestedId);
  const email=document.getElementById('userLoginUsername').value.trim();
  const password=document.getElementById('userLoginPassword').value;
  const error=document.getElementById('userLoginError');
@@ -448,30 +438,19 @@ async function performUserLogin(){
  if(!email || !password){ error.innerHTML='<b>Enter your email and password.</b>'; error.style.display='block'; return; }
  btn.disabled=true; btn.textContent='Signing in…';
  try{
-   const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
-     method:'POST', headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},
-     body:JSON.stringify({email,password})
-   });
+   const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
    const auth=await authRes.json();
    if(!authRes.ok || !auth.access_token) throw new Error(auth.error_description||auth.msg||'Login failed.');
-   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{
-     headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}
-   });
-   const profiles=await profileRes.json();
-   if(!profileRes.ok) throw new Error(profiles.message||'Could not load your Pack 873 profile.');
-   const profile=profiles[0];
-   if(!profile) throw new Error('No Pack 873 profile is linked to this login.');
-   if(!profile.active) throw new Error('This Pack 873 account is inactive.');
-   if(profile.role==='admin') throw new Error('This is an admin account. Admin Supabase login will be connected in the next stage.');
-   if(!requestedPerson || requestedPerson.name.toLowerCase()!==profile.display_name.toLowerCase()) throw new Error('This login belongs to '+profile.display_name+', not '+(requestedPerson?requestedPerson.name:'the selected reader')+'.');
-   supabaseAccessToken=auth.access_token;
-   supabaseUserUuid=auth.user.id;
-   authenticatedUserId=requestedId; adminAuthenticated=false;
-   await loadSupabaseChallenge();
-   await loadMySupabaseEntries();
-   viewer=String(requestedId); previousViewer=viewer;
-   dlg.close(); document.getElementById('roleSelect').value=viewer;
-   closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
+   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+   const profiles=await profileRes.json(); if(!profileRes.ok)throw new Error(profiles.message||'Could not load your Pack 873 profile.');
+   const profile=profiles[0]; if(!profile)throw new Error('No Pack 873 profile is linked to this login.'); if(!profile.active)throw new Error('This Pack 873 account is inactive.');
+   if(profile.role==='admin')throw new Error('Admin Supabase login will be connected in the Admin stage.');
+   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id; adminAuthenticated=false;
+   await loadSupabaseChallenge(); await loadAllSupabaseData();
+   const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Your active reader profile could not be loaded.');
+   authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer; rebuildViewerOptions();
+   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
+   dlg.close(); closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
  }catch(err){ error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>'; error.style.display='block'; }
  finally{ btn.disabled=false; btn.textContent='Login'; }
 }
@@ -481,9 +460,8 @@ function cancelUserLogin(){
 }
 function logoutAll(){
  adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;supabaseUserUuid=null;activeChallengeId=null;
- viewer='loggedout';previousViewer='loggedout';
- document.getElementById('roleSelect').value='loggedout';
- closeUser();render();showToast('Logged out successfully.');
+ localStorage.removeItem('pack873_session'); viewer='loggedout';previousViewer='loggedout'; clearLiveData();
+ document.getElementById('roleSelect').value='loggedout'; closeUser();render();showToast('Logged out successfully.');
 }
 function performAdminLogin(){
  const u=document.getElementById('adminUsername').value.trim().toLowerCase();
@@ -559,6 +537,18 @@ document.getElementById('userLoginPassword').onkeydown=function(e){if(e.key==='E
 document.getElementById('entryMinutes').addEventListener('input',updateMinutesReadable);
 document.getElementById('entryMinutes').addEventListener('change',updateMinutesReadable);
 updateMinutesReadable();
-render();
+async function restoreSupabaseSession(){
+ clearLiveData(); render();
+ const raw=localStorage.getItem('pack873_session'); if(!raw)return;
+ try{
+   const saved=JSON.parse(raw); if(!saved.refresh_token)return;
+   const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:saved.refresh_token})});
+   const auth=await res.json(); if(!res.ok||!auth.access_token)throw new Error('Session expired');
+   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id; await loadSupabaseChallenge(); await loadAllSupabaseData();
+   const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Profile not found'); authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer;
+   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id})); rebuildViewerOptions(); render();
+ }catch(e){localStorage.removeItem('pack873_session'); clearLiveData(); viewer='loggedout'; render();}
+}
+restoreSupabaseSession();
 </script>
 </body></html>
