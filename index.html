@@ -637,7 +637,7 @@ async function performUserLogin(){
    if(!authRes.ok || !auth.access_token) throw new Error(auth.error_description||auth.msg||'Login failed.');
    const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
    const profiles=await profileRes.json(); if(!profileRes.ok)throw new Error(profiles.message||'Could not load your Pack 873 profile.');
-   const profile=profiles[0]; if(!profile)throw new Error('No Pack 873 profile is linked to this login.'); if(!profile.active)throw new Error('This Pack 873 account is inactive.');
+   const profile=profiles[0]; if(!profile)throw new Error('No Pack 873 profile is linked to this login.'); if(!profile.active)throw new Error(profile.display_name+', your Pack 873 account is INACTIVE. Contact Admin for any questions.');
    supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
    await loadSupabaseChallenge(); await loadAllSupabaseData();
    localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
@@ -782,7 +782,7 @@ async function restoreSupabaseSession(){
    const auth=await res.json(); if(!res.ok||!auth.access_token)throw new Error('Session expired');
    supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
    const pr=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
-   const parr=await pr.json();if(!pr.ok||!parr[0]||!parr[0].active)throw new Error('Profile not found or inactive');
+   const parr=await pr.json();if(!pr.ok)throw new Error('Could not load your Pack 873 profile.');if(!parr[0])throw new Error('No Pack 873 profile is linked to this login.');if(!parr[0].active)throw new Error(parr[0].display_name+', your Pack 873 account is INACTIVE. Contact Admin for any questions.');
    await loadSupabaseChallenge(); await loadAllSupabaseData();
    if(parr[0].role==='admin'){adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';}
    else{adminAuthenticated=false;const me=users.find(u=>u.uuid===supabaseUserUuid);if(!me)throw new Error('Profile not found');authenticatedUserId=me.id;viewer=String(me.id);previousViewer=viewer;}
