@@ -31,10 +31,14 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option><option value="adminlogin">Admin Login</option></select><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
-<section id="loggedOutWelcome" class="card" style="text-align:center;padding:34px 22px">
- <h2>Welcome to the Pack 873 Reading Challenge</h2>
- <p class="muted" style="max-width:650px;margin:8px auto 18px">Sign in to view the current challenge, leaderboard, books, and reading activity.</p>
- <button type="button" onclick="openUserLoginDirect()">Sign In</button>
+<section id="loggedOutWelcome" class="card" style="text-align:center;padding:38px 22px;overflow:hidden;position:relative">
+ <div style="font-size:34px;line-height:1;margin-bottom:10px" aria-hidden="true">🏕️ 📚 🐾</div>
+ <div class="muted" style="font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">Pack 873 Reading Challenge</div>
+ <h2 style="font-size:clamp(26px,4vw,38px);margin:4px 0 8px">Welcome, Readers!</h2>
+ <h3 style="margin:0 auto 14px;font-size:clamp(18px,2.7vw,24px)">Your Pack 873 Reading Adventure Starts Here!</h3>
+ <p style="max-width:680px;margin:0 auto 8px;font-size:17px;line-height:1.55"><strong>Every book is a new adventure. Every minute counts!</strong></p>
+ <p class="muted" style="max-width:680px;margin:0 auto 22px;line-height:1.6">Read books. Track your minutes. Build your streak. Climb the leaderboard and see how far your reading adventure can take you!</p>
+ <button type="button" onclick="openUserLoginDirect()" style="font-size:17px;padding:12px 22px">🚀 Start Reading — Sign In</button>
 </section>
 <div id="liveContent" class="hidden" style="display:none">
 <section class="card challenge">
