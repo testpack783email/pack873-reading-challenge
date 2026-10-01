@@ -478,13 +478,18 @@ async function performUserLogin(){
    const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
    const profiles=await profileRes.json(); if(!profileRes.ok)throw new Error(profiles.message||'Could not load your Pack 873 profile.');
    const profile=profiles[0]; if(!profile)throw new Error('No Pack 873 profile is linked to this login.'); if(!profile.active)throw new Error('This Pack 873 account is inactive.');
-   if(profile.role==='admin')throw new Error('Admin Supabase login will be connected in the Admin stage.');
-   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id; adminAuthenticated=false;
+   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
    await loadSupabaseChallenge(); await loadAllSupabaseData();
-   const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Your active reader profile could not be loaded.');
-   authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer; rebuildViewerOptions();
    localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
-   dlg.close(); closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
+   if(profile.role==='admin'){
+     adminAuthenticated=true; authenticatedUserId=null; viewer='admin'; previousViewer='admin';
+     rebuildViewerOptions(); dlg.close(); closeUser(); render(); showToast('Admin login successful — '+profile.display_name+' is connected.');
+   }else{
+     adminAuthenticated=false;
+     const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Your active reader profile could not be loaded.');
+     authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer; rebuildViewerOptions();
+     dlg.close(); closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
+   }
  }catch(err){ error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>'; error.style.display='block'; }
  finally{ btn.disabled=false; btn.textContent='Login'; }
 }
