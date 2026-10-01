@@ -31,6 +31,12 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option></select><button class="secondary" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
+<section id="loggedOutWelcome" class="card" style="text-align:center;padding:34px 22px">
+ <h2>Welcome to the Pack 873 Reading Challenge</h2>
+ <p class="muted" style="max-width:650px;margin:8px auto 18px">Sign in to view the current challenge, leaderboard, books, and reading activity.</p>
+ <button type="button" onclick="openUserLoginDirect()">Sign In</button>
+</section>
+<div id="liveContent" class="hidden">
 <section class="card challenge">
  <div class="row spread"><div><div class="muted">CURRENT CHALLENGE</div><h2 id="challengeTitle">September–October Reading Challenge</h2><div id="dateLabel"></div></div>
  <button id="challengeBtn" onclick="openChallenge()">⚙ Set Challenge Dates</button></div>
@@ -52,6 +58,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <section class="card"><h2>📖 Book Summary by User</h2><div class="muted" style="margin-bottom:8px">See what each reader is reading and the time spent on each book.</div>
 <div class="tablewrap"><table><thead><tr><th>User</th><th>Book</th><th>Time on Book</th></tr></thead><tbody id="booksBody"></tbody></table></div></section>
 <section class="card"><h2 id="accessTitle">What You Can Do</h2><div id="accessText"></div><div id="adminTestStatus" class="muted" style="margin-top:12px"></div></section>
+</div>
 </div>
 
 <section id="userPanel" class="card hidden">
@@ -156,6 +163,7 @@ function streak(id){
 }
 function stats(u){let es=userEntries(u.id),mins=es.reduce((a,e)=>a+e.minutes,0),books=[...new Set(es.map(e=>e.book))];return {mins,books,streak:streak(u.id),last:es.map(e=>e.date).sort().reverse()[0]||'—'}}
 function render(){
+ updateLoggedOutView();
  const loginStatus=document.getElementById('loginStatus');
  if(loginStatus){
    if(viewer==='admin' && adminAuthenticated){
@@ -352,6 +360,19 @@ function addUser(){
  showToast(name+' added successfully.');
  render();
 }
+function openUserLoginDirect(){
+ const select=document.getElementById('roleSelect');
+ if(select) select.value='userlogin';
+ changeViewer('userlogin');
+}
+function updateLoggedOutView(){
+ const loggedOut=(viewer==='loggedout' && !adminAuthenticated && !authenticatedUserId);
+ const welcome=document.getElementById('loggedOutWelcome');
+ const live=document.getElementById('liveContent');
+ if(welcome) welcome.classList.toggle('hidden',!loggedOut);
+ if(live) live.classList.toggle('hidden',loggedOut);
+ if(loggedOut && selectedUser) closeUser();
+}
 function changeViewer(v){
  const select=document.getElementById('roleSelect');
  if(v==='loggedout'){logoutAll();return;}
@@ -500,7 +521,7 @@ function updatePermissions(){
    accessText.innerHTML='<p><b>Admin can see everything users see, plus:</b></p><p>✓ Add/manage users<br>✓ Set challenge dates<br>✓ Add entries for any user<br>✓ Edit or delete any user’s entries<br>✓ Correct books, dates, minutes and notes</p><p class="muted">Normal users cannot change or delete an entry after submitting it.</p>';
  }else if(viewer==='loggedout'){
    accessTitle.textContent='Login Required';
-   accessText.innerHTML='<p>Select your name from <b>Logged in as</b> and enter your credentials. After login you can add your own reading entries and view everyone’s progress.</p>';
+   accessText.innerHTML='<p>Sign in with your Pack 873 account to view the live challenge and reading activity.</p>';
  }else{
    let me=users.find(u=>u.id===Number(viewer));
    accessTitle.textContent='Logged in as '+me.name;
