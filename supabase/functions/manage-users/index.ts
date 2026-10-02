@@ -6,6 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const allowedDenNames = new Set([
+  "Lion",
+  "Tiger",
+  "Wolf",
+  "Bear",
+  "Webelos",
+  "Arrow of Light",
+]);
+
 function reply(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -116,9 +125,19 @@ Deno.serve(async (req) => {
         return reply({ error: authError.message }, 400);
       }
 
-      const { data: profileData, error: listProfileError } = await adminClient
+      const profileWithDen = await adminClient
         .from("profiles")
-        .select("id, display_name, role, active, must_change_password");
+        .select("id, display_name, role, active, must_change_password, den_name");
+      let profileData = profileWithDen.data;
+      let listProfileError = profileWithDen.error;
+      // Keep older deployments usable until the den_name migration has run.
+      if (listProfileError?.message.toLowerCase().includes("den_name")) {
+        const legacyProfiles = await adminClient
+          .from("profiles")
+          .select("id, display_name, role, active, must_change_password");
+        profileData = legacyProfiles.data;
+        listProfileError = legacyProfiles.error;
+      }
       if (listProfileError) {
         return reply({ error: listProfileError.message }, 400);
       }
@@ -134,6 +153,7 @@ Deno.serve(async (req) => {
           role: listedProfile?.role || "user",
           active: listedProfile?.active !== false,
           must_change_password: listedProfile?.must_change_password === true,
+          den_name: listedProfile?.den_name || "",
           email: authUser.email || "",
         };
       });
@@ -145,11 +165,15 @@ Deno.serve(async (req) => {
     if (action === "create-user") {
       const displayName = String(body.display_name || "").trim();
       const email = String(body.email || "").trim().toLowerCase();
+      const denName = String(body.den_name || "").trim();
       const role = body.role === "admin" ? "admin" : "user";
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
 
-      if (!displayName || !email) {
-        return reply({ error: "Display name and email are required" }, 400);
+      if (!displayName || !email || !denName) {
+        return reply({ error: "Name, email, and Den Name are required" }, 400);
+      }
+      if (!allowedDenNames.has(denName)) {
+        return reply({ error: "Choose a valid Den Name" }, 400);
       }
       if (!temporaryPassword || temporaryPassword.length < 8) {
         return reply(
@@ -174,6 +198,7 @@ Deno.serve(async (req) => {
       const { error: insertError } = await adminClient.from("profiles").insert({
         id: created.user.id,
         display_name: displayName,
+        den_name: denName,
         role,
         active: true,
         must_change_password: true,
@@ -196,6 +221,7 @@ Deno.serve(async (req) => {
         user: {
           id: created.user.id,
           display_name: displayName,
+          den_name: denName,
           email,
           role,
           active: true,
