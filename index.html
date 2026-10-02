@@ -531,12 +531,14 @@ function openAddUser(){
 async function addUser(){
  if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken){alert('Admin login required.');return;}
  const name=document.getElementById('newName').value.trim();
- const email=document.getElementById('newEmail').value.trim();
+ const emailInput=document.getElementById('newEmail');
+ const email=emailInput.value.trim();
  const denName=document.getElementById('newDenName').value;
  const role=document.getElementById('newRole').value==='admin'?'admin':'user';
  const error=document.getElementById('userCreateError');
  error.style.display='none'; error.textContent='';
  if(!name||!email||!denName){error.textContent='Name, email, and Den Name are required.';error.style.display='block';return;}
+ if(!emailInput.checkValidity()){emailInput.reportValidity();return;}
  const btn=document.getElementById('userSaveBtn');
  btn.disabled=true; btn.textContent='Creating…';
  try{
