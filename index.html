@@ -28,7 +28,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div><h1>PACK 873 Reading Challenge</h1><small id="loginStatus">You are not logged in</small></div>
 </div>
 <div class="row"><label style="color:#fff">Logged in as</label>
-<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option><option value="adminlogin">Admin Login</option></select><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
+<select id="roleSelect" onchange="changeViewer(this.value)"><option value="loggedout" selected>-- Logged Out --</option><option value="userlogin">User Login</option><option value="adminlogin">Admin Login</option></select><button id="changePasswordBtn" class="secondary hidden" type="button" onclick="openChangePassword(false)">Change Password</button><button id="logoutBtn" class="secondary hidden" onclick="logoutAll()">Logout</button></div></header>
 
 <main class="wrap">
 <section id="loggedOutWelcome" class="card" style="text-align:center;padding:38px 22px;overflow:hidden;position:relative">
@@ -89,16 +89,22 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="challengeCancelBtn">Cancel</button><button type="button" id="challengeSaveBtn">Save Dates</button></div></div></dialog>
 
 <dialog id="userDialog"><div class="modal"><h2>Add New User</h2>
-<p class="muted">Create a real Pack 873 account. The user can sign in immediately after creation.</p>
+<p class="muted">Create a real Pack 873 account. New users sign in with the Pack 873 standard temporary password and must choose their own password before using the app.</p>
 <div class="formgrid">
 <div class="field"><label>Name</label><input id="newName" autocomplete="off"></div>
 <div class="field"><label>Email</label><input id="newEmail" type="email" autocomplete="off"></div>
-<div class="field"><label>Temporary Password</label><input id="newPassword" type="password" autocomplete="new-password"><label style="margin-top:6px;color:#697386"><input type="checkbox" id="showNewPassword"> Show password</label></div>
 <div class="field"><label>Role</label><select id="newRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
 </div>
-<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff8e6"><b>🔐 Save the email and temporary password before creating the user.</b><div class="muted" style="margin-top:5px">The password cannot be viewed from this Admin page afterward.</div></div>
+<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff8e6"><b>🔐 Tell the user the Pack 873 standard temporary password through your normal private channel.</b><div class="muted" style="margin-top:5px">They must change it when they first sign in. The password is kept in Supabase as a function secret, never in this page.</div></div>
 <div id="userCreateError" style="display:none;color:#b42318;margin-top:12px"></div>
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="userCancelBtn">Cancel</button><button type="button" id="userSaveBtn">Create User</button></div></div></dialog>
+
+<dialog id="changePasswordDialog"><div class="modal"><h2 id="changePasswordTitle">Change Your Password</h2>
+<p class="muted" id="changePasswordPrompt">Choose a new password for your Pack 873 account.</p>
+<div class="formgrid"><div class="field full"><label>New password</label><input id="newAccountPassword" type="password" autocomplete="new-password"></div><div class="field full"><label>Confirm new password</label><input id="confirmAccountPassword" type="password" autocomplete="new-password"></div></div>
+<div id="changePasswordError" style="display:none;color:#b42318;margin-top:12px"></div>
+<div class="row" style="justify-content:flex-end;margin-top:18px"><button id="forcedPasswordLogoutBtn" type="button" class="secondary hidden" onclick="logoutAll()">Log Out</button><button type="button" id="changePasswordSubmitBtn" onclick="submitPasswordChange()">Change Password</button></div>
+</div></dialog>
 <dialog id="userLoginDialog">
 <div class="modal">
 <h2>🔐 User Login</h2>
@@ -174,6 +180,9 @@ let viewer='loggedout';
 let previousViewer='loggedout';
 let adminAuthenticated=false;
 let authenticatedUserId=null;
+let passwordChangeRequired=false;
+let pendingPasswordProfile=null;
+let authenticatedProfile=null;
 const SUPABASE_URL='https://zhsjyruwqvsliiofjqca.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_MiL6D0pvBXe-KujTUk0Pyw_BgaitrgG';
 let supabaseAccessToken=null;
@@ -495,10 +504,7 @@ function openAddUser(){
  if(viewer!=='admin'||!adminAuthenticated)return;
  document.getElementById('newName').value='';
  document.getElementById('newEmail').value='';
- document.getElementById('newPassword').value='';
  document.getElementById('newRole').value='user';
- document.getElementById('showNewPassword').checked=false;
- document.getElementById('newPassword').type='password';
  const error=document.getElementById('userCreateError');
  error.style.display='none'; error.textContent='';
  document.getElementById('userDialog').showModal();
@@ -507,24 +513,22 @@ async function addUser(){
  if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken){alert('Admin login required.');return;}
  const name=document.getElementById('newName').value.trim();
  const email=document.getElementById('newEmail').value.trim();
- const password=document.getElementById('newPassword').value;
  const role=document.getElementById('newRole').value==='admin'?'admin':'user';
  const error=document.getElementById('userCreateError');
  error.style.display='none'; error.textContent='';
- if(!name||!email||!password){error.textContent='Name, email and temporary password are required.';error.style.display='block';return;}
- if(password.length<8){error.textContent='Temporary password must be at least 8 characters.';error.style.display='block';return;}
+ if(!name||!email){error.textContent='Name and email are required.';error.style.display='block';return;}
  const btn=document.getElementById('userSaveBtn');
  btn.disabled=true; btn.textContent='Creating…';
  try{
    const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
      method:'POST',
      headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json'},
-     body:JSON.stringify({action:'create-user',display_name:name,email,password,role})
+    body:JSON.stringify({action:'create-user',display_name:name,email,role})
    });
    let data={}; try{data=await res.json();}catch(_e){}
    if(!res.ok) throw new Error(data.error||data.message||('HTTP '+res.status));
    document.getElementById('userDialog').close();
-   showToast((data.message||name+' created successfully')+'. Credentials should now be stored safely.');
+   showToast(data.message||name+' created. Give them the standard temporary password privately.');
    await loadAllSupabaseData();
    render();
  }catch(e){
@@ -674,6 +678,49 @@ async function addMySupabaseEntry(date,book,minutes,notes){
  if(!Array.isArray(rows)||!rows.length)throw new Error('Supabase returned success but no saved row was returned.');
  return rows[0];
 }
+function cacheAuthSession(auth){
+ supabaseAccessToken=auth.access_token;
+ supabaseUserUuid=auth.user.id;
+ let saved={};try{saved=JSON.parse(localStorage.getItem('pack873_session')||'{}')}catch(_e){}
+ localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token||saved.refresh_token,user_id:auth.user.id}));
+}
+function openChangePassword(required,profile){
+ if(required){passwordChangeRequired=true;pendingPasswordProfile=profile||pendingPasswordProfile;}
+ else if(!supabaseAccessToken){return;}
+ else{pendingPasswordProfile=authenticatedProfile;}
+ if(profile)authenticatedProfile=profile;
+ const dlg=document.getElementById('changePasswordDialog');
+ document.getElementById('changePasswordTitle').textContent=passwordChangeRequired?'Change Your Temporary Password':'Change Your Password';
+ document.getElementById('changePasswordPrompt').textContent=passwordChangeRequired?'You must choose a new password before you can continue to the Pack 873 app.':'Choose a new password for your Pack 873 account.';
+ document.getElementById('forcedPasswordLogoutBtn').classList.toggle('hidden',!passwordChangeRequired);
+ document.getElementById('newAccountPassword').value='';
+ document.getElementById('confirmAccountPassword').value='';
+ const error=document.getElementById('changePasswordError');error.textContent='';error.style.display='none';
+ if(!dlg.open)dlg.showModal();
+}
+async function finishAuthenticatedLogin(profile,auth,successMessage){
+ cacheAuthSession(auth); authenticatedProfile=profile; pendingPasswordProfile=null; passwordChangeRequired=false;
+ await loadSupabaseChallenge(); await loadAllSupabaseData();
+ if(profile.role==='admin'){
+   adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';
+ }else{
+   adminAuthenticated=false;
+   const me=users.find(u=>u.uuid===supabaseUserUuid);if(!me)throw new Error('Your active reader profile could not be loaded.');
+   authenticatedUserId=me.id;viewer=String(me.id);previousViewer=viewer;
+ }
+ rebuildViewerOptions();
+ const changeDialog=document.getElementById('changePasswordDialog');if(changeDialog.open)changeDialog.close();
+ const userLoginDialog=document.getElementById('userLoginDialog');if(userLoginDialog.open)userLoginDialog.close();
+ const adminLoginDialog=document.getElementById('adminLoginDialog');if(adminLoginDialog.open)adminLoginDialog.close();
+ closeUser();render();showToast(successMessage||'Signed in successfully.');
+}
+function requirePasswordChange(profile,auth){
+ cacheAuthSession(auth);authenticatedProfile=profile;pendingPasswordProfile=profile;passwordChangeRequired=true;
+ adminAuthenticated=false;authenticatedUserId=null;viewer='loggedout';previousViewer='loggedout';clearLiveData();render();
+ const userDlg=document.getElementById('userLoginDialog');if(userDlg.open)userDlg.close();
+ const adminDlg=document.getElementById('adminLoginDialog');if(adminDlg.open)adminDlg.close();
+ openChangePassword(true,profile);
+}
 async function performUserLogin(){
  const dlg=document.getElementById('userLoginDialog');
  const email=document.getElementById('userLoginUsername').value.trim();
@@ -687,21 +734,11 @@ async function performUserLogin(){
    const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
    const auth=await authRes.json();
    if(!authRes.ok || !auth.access_token) throw new Error(auth.error_description||auth.msg||'Login failed.');
-   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active,must_change_password',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
    const profiles=await profileRes.json(); if(!profileRes.ok)throw new Error(profiles.message||'Could not load your Pack 873 profile.');
    const profile=profiles[0]; if(!profile)throw new Error('No Pack 873 profile is linked to this login.'); if(!profile.active)throw new Error(profile.display_name+', your Pack 873 account is INACTIVE. Contact Admin for any questions.');
-   supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
-   await loadSupabaseChallenge(); await loadAllSupabaseData();
-   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
-   if(profile.role==='admin'){
-     adminAuthenticated=true; authenticatedUserId=null; viewer='admin'; previousViewer='admin';
-     rebuildViewerOptions(); dlg.close(); closeUser(); render(); showToast('Admin login successful — '+profile.display_name+' is connected.');
-   }else{
-     adminAuthenticated=false;
-     const me=users.find(u=>u.uuid===supabaseUserUuid); if(!me)throw new Error('Your active reader profile could not be loaded.');
-     authenticatedUserId=me.id; viewer=String(me.id); previousViewer=viewer; rebuildViewerOptions();
-     dlg.close(); closeUser(); render(); showToast('Supabase login successful — '+profile.display_name+' is connected.');
-   }
+   if(profile.must_change_password){requirePasswordChange(profile,auth);return;}
+   await finishAuthenticatedLogin(profile,auth,'Welcome, '+profile.display_name+'.');
  }catch(err){ error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>'; error.style.display='block'; }
  finally{ btn.disabled=false; btn.textContent='Login'; }
 }
@@ -710,9 +747,34 @@ function cancelUserLogin(){
  document.getElementById('roleSelect').value=viewer;
 }
 function logoutAll(){
- adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;supabaseUserUuid=null;activeChallengeId=null;
+ const changeDialog=document.getElementById('changePasswordDialog');if(changeDialog.open)changeDialog.close();
+ adminAuthenticated=false;authenticatedUserId=null;supabaseAccessToken=null;supabaseUserUuid=null;activeChallengeId=null;passwordChangeRequired=false;pendingPasswordProfile=null;authenticatedProfile=null;
  localStorage.removeItem('pack873_session'); viewer='loggedout';previousViewer='loggedout'; clearLiveData();
  document.getElementById('roleSelect').value='loggedout'; closeUser();render();showToast('Logged out successfully.');
+}
+async function submitPasswordChange(){
+ const password=document.getElementById('newAccountPassword').value;
+ const confirmation=document.getElementById('confirmAccountPassword').value;
+ const error=document.getElementById('changePasswordError');
+ const btn=document.getElementById('changePasswordSubmitBtn');
+ error.textContent='';error.style.display='none';
+ if(!supabaseAccessToken){error.textContent='Your session has expired. Please sign in again.';error.style.display='block';return;}
+ if(password.length<8){error.textContent='Use at least 8 characters for your new password.';error.style.display='block';return;}
+ if(password!==confirmation){error.textContent='The passwords do not match.';error.style.display='block';return;}
+ btn.disabled=true;btn.textContent='Changing…';
+ try{
+   const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json'},body:JSON.stringify({action:'change-password',new_password:password})});
+   let data={};try{data=await res.json()}catch(_e){}
+   if(!res.ok)throw new Error(data.error||data.message||('HTTP '+res.status));
+   const profile=pendingPasswordProfile||authenticatedProfile;
+   if(!profile)throw new Error('Could not recover your Pack 873 account. Please sign in again.');
+   profile.must_change_password=false;
+   const saved=JSON.parse(localStorage.getItem('pack873_session')||'{}');
+   const auth={access_token:supabaseAccessToken,refresh_token:saved.refresh_token,user:{id:supabaseUserUuid}};
+   document.getElementById('newAccountPassword').value='';document.getElementById('confirmAccountPassword').value='';
+   await finishAuthenticatedLogin(profile,auth,data.message||'Password changed successfully.');
+ }catch(e){error.textContent='Could not change password: '+String(e.message||e);error.style.display='block';}
+ finally{btn.disabled=false;btn.textContent='Change Password';}
 }
 async function performAdminLogin(){
  const email=document.getElementById('adminUsername').value.trim();
@@ -726,13 +788,11 @@ async function performAdminLogin(){
    const authRes=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
    const auth=await authRes.json();
    if(!authRes.ok||!auth.access_token)throw new Error(auth.error_description||auth.msg||'Login failed.');
-   const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+    const profileRes=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active,must_change_password',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
    const profiles=await profileRes.json();if(!profileRes.ok)throw new Error(profiles.message||'Could not load Admin profile.');
    const profile=profiles[0];if(!profile)throw new Error('No Pack 873 profile is linked to this login.');if(!profile.active)throw new Error('This Admin account is inactive.');if(profile.role!=='admin')throw new Error('This account does not have Admin permission.');
-   supabaseAccessToken=auth.access_token;supabaseUserUuid=auth.user.id;adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';
-   await loadSupabaseChallenge();await loadAllSupabaseData();
-   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id}));
-   rebuildViewerOptions();document.getElementById('adminLoginDialog').close();closeUser();render();showToast('Admin login successful.');return true;
+    if(profile.must_change_password){requirePasswordChange(profile,auth);return true;}
+    await finishAuthenticatedLogin(profile,auth,'Admin login successful.');return true;
  }catch(err){error.innerHTML='<b>'+String(err.message||err).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</b>';error.style.display='block';return false;}
  finally{btn.disabled=false;btn.textContent='Login';}
 }
@@ -775,6 +835,7 @@ async function testAdminEdgeFunction(){
 }
 function updatePermissions(){
  let isAdmin=viewer==='admin' && adminAuthenticated;
+ const changePasswordBtn=document.getElementById('changePasswordBtn');if(changePasswordBtn)changePasswordBtn.classList.toggle('hidden',!supabaseAccessToken||passwordChangeRequired);
  const test=document.getElementById('adminTestStatus');
  if(test) test.textContent=isAdmin?'✓ Admin controls unlocked':'Normal user permissions active';
  const edgeBtn=document.getElementById('adminEdgeTestBtn'); if(edgeBtn) edgeBtn.classList.toggle('hidden',!isAdmin);
@@ -806,7 +867,6 @@ document.getElementById('adminPassword').onkeydown=function(e){
 document.getElementById('challengeSaveBtn').onclick=function(){saveChallenge();};
 document.getElementById('challengeCancelBtn').onclick=function(){document.getElementById('challengeDialog').close();};
 document.getElementById('userSaveBtn').onclick=function(){addUser();};
-document.getElementById('showNewPassword').onchange=function(){document.getElementById('newPassword').type=this.checked?'text':'password';};
 document.getElementById('userCancelBtn').onclick=function(){document.getElementById('userDialog').close();};
 document.getElementById('entrySaveBtn').onclick=function(){saveEntry();};
 document.getElementById('entryCancelBtn').onclick=function(){document.getElementById('entryDialog').close();};
@@ -819,6 +879,8 @@ document.getElementById('userLoginBtn').onclick=function(){performUserLogin();};
 document.getElementById('userLoginCancelBtn').onclick=function(){cancelUserLogin();};
 document.getElementById('showUserPw').onchange=function(){document.getElementById('userLoginPassword').type=this.checked?'text':'password';};
 document.getElementById('userLoginPassword').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();performUserLogin();}};
+document.getElementById('changePasswordDialog').addEventListener('cancel',function(e){if(passwordChangeRequired)e.preventDefault();});
+document.getElementById('confirmAccountPassword').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();submitPasswordChange();}};
 
 document.getElementById('permanentDeleteUserConfirmBtn').addEventListener('click',permanentlyDeleteUser);
 document.getElementById('permanentDeleteUserCancelBtn').addEventListener('click',function(){document.getElementById('permanentDeleteUserDialog').close();});
@@ -833,13 +895,11 @@ async function restoreSupabaseSession(){
    const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:saved.refresh_token})});
    const auth=await res.json(); if(!res.ok||!auth.access_token)throw new Error('Session expired');
    supabaseAccessToken=auth.access_token; supabaseUserUuid=auth.user.id;
-   const pr=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
+    const pr=await fetch(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+encodeURIComponent(auth.user.id)+'&select=display_name,role,active,must_change_password',{headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+auth.access_token,'Accept':'application/json'}});
    const parr=await pr.json();if(!pr.ok)throw new Error('Could not load your Pack 873 profile.');if(!parr[0])throw new Error('No Pack 873 profile is linked to this login.');if(!parr[0].active)throw new Error(parr[0].display_name+', your Pack 873 account is INACTIVE. Contact Admin for any questions.');
-   await loadSupabaseChallenge(); await loadAllSupabaseData();
-   if(parr[0].role==='admin'){adminAuthenticated=true;authenticatedUserId=null;viewer='admin';previousViewer='admin';}
-   else{adminAuthenticated=false;const me=users.find(u=>u.uuid===supabaseUserUuid);if(!me)throw new Error('Profile not found');authenticatedUserId=me.id;viewer=String(me.id);previousViewer=viewer;}
-   localStorage.setItem('pack873_session',JSON.stringify({access_token:auth.access_token,refresh_token:auth.refresh_token,user_id:auth.user.id})); rebuildViewerOptions(); render();
- }catch(e){localStorage.removeItem('pack873_session'); clearLiveData(); viewer='loggedout'; render();}
+    if(parr[0].must_change_password){requirePasswordChange(parr[0],auth);return;}
+    await finishAuthenticatedLogin(parr[0],auth,'Welcome back, '+parr[0].display_name+'.');
+  }catch(e){localStorage.removeItem('pack873_session');supabaseAccessToken=null;supabaseUserUuid=null;authenticatedProfile=null;pendingPasswordProfile=null;passwordChangeRequired=false;clearLiveData();viewer='loggedout';render();}
 }
 restoreSupabaseSession();
 </script>
