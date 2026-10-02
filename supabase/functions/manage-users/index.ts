@@ -16,72 +16,6 @@ function reply(body: unknown, status = 200) {
   });
 }
 
-function escapeHtml(value: string) {
-  const entities: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  };
-  return value.replace(/[&<>"']/g, (character) => entities[character]);
-}
-
-function emailConfigurationError() {
-  if (!Deno.env.get("RESEND_API_KEY")) {
-    return "Email is not configured: add RESEND_API_KEY to Supabase Edge Function secrets.";
-  }
-  if (!Deno.env.get("EMAIL_FROM")) {
-    return "Email is not configured: add EMAIL_FROM to Supabase Edge Function secrets.";
-  }
-  return null;
-}
-
-async function sendTemporaryPasswordEmail(email: string, displayName: string, temporaryPassword: string) {
-  const apiKey = Deno.env.get("RESEND_API_KEY")!;
-  const from = Deno.env.get("EMAIL_FROM")!;
-  const safeName = escapeHtml(displayName);
-  const safePassword = escapeHtml(temporaryPassword);
-  const text =
-    "Hello Scout " + displayName + ",\n\n" +
-    "Pack 873 is very happy to have you on the Reading Challenge team.\n\n" +
-    "Your one-time password is " + temporaryPassword + ". Please change your password after you log in.\n\n" +
-    "Happy reading, and wishing you all the best in your future endeavors.\n\n" +
-    "Thanks,\nPack873 admin.";
-  const html =
-    "<p>Hello Scout " + safeName + ",</p>" +
-    "<p>Pack 873 is very happy to have you on the Reading Challenge team.</p>" +
-    "<p>Your one-time password is <strong>" + safePassword + "</strong>. Please change your password after you log in.</p>" +
-    "<p>Happy reading, and wishing you all the best in your future endeavors.</p>" +
-    "<p>Thanks,<br>Pack873 admin.</p>";
-
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject: "Welcome to the Pack 873 Reading Challenge",
-        text,
-        html,
-      }),
-    });
-    if (!response.ok) {
-      return {
-        sent: false,
-        error: "The email provider rejected the message (HTTP " + response.status + ").",
-      };
-    }
-    return { sent: true, error: null };
-  } catch {
-    return { sent: false, error: "The email provider could not be reached." };
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -223,8 +157,6 @@ Deno.serve(async (req) => {
           503,
         );
       }
-      const emailConfigError = emailConfigurationError();
-      if (emailConfigError) return reply({ error: emailConfigError }, 503);
 
       const { data: created, error: createError } =
         await adminClient.auth.admin.createUser({
@@ -258,19 +190,9 @@ Deno.serve(async (req) => {
         );
       }
 
-      const emailResult = await sendTemporaryPasswordEmail(
-        email,
-        displayName,
-        temporaryPassword,
-      );
       return reply({
         success: true,
-        email_sent: emailResult.sent,
-        email_error: emailResult.error,
-        message: emailResult.sent
-          ? displayName + " created successfully. Temporary password email sent to " + email + "."
-          : displayName + " was created, but the temporary password email was not sent: " +
-            emailResult.error + " Share the password privately or retry Reactivate after fixing email delivery.",
+        message: `${displayName} created successfully. Give them the standard temporary password privately; they must change it at first sign-in.`,
         user: {
           id: created.user.id,
           display_name: displayName,
@@ -315,22 +237,6 @@ Deno.serve(async (req) => {
           503,
         );
       }
-      const emailConfigError = emailConfigurationError();
-      if (emailConfigError) return reply({ error: emailConfigError }, 503);
-
-      const { data: targetAuthData, error: targetAuthError } =
-        await adminClient.auth.admin.getUserById(targetUserId);
-      if (targetAuthError || !targetAuthData.user?.email) {
-        return reply({ error: "The user's email address could not be found" }, 404);
-      }
-      const { data: targetProfile, error: targetProfileError } = await adminClient
-        .from("profiles")
-        .select("display_name")
-        .eq("id", targetUserId)
-        .single();
-      if (targetProfileError || !targetProfile) {
-        return reply({ error: "The user's profile could not be found" }, 404);
-      }
 
       const { error: passwordError } = await adminClient.auth.admin.updateUserById(
         targetUserId,
@@ -354,21 +260,9 @@ Deno.serve(async (req) => {
         );
       }
 
-      const emailResult = await sendTemporaryPasswordEmail(
-        targetAuthData.user.email,
-        targetProfile.display_name || targetAuthData.user.email,
-        temporaryPassword,
-      );
-      const name = targetProfile.display_name || targetAuthData.user.email;
       return reply({
         success: true,
-        email_sent: emailResult.sent,
-        email_error: emailResult.error,
-        message: emailResult.sent
-          ? "User " + name + " reactivated. Temporary password email sent to " +
-            targetAuthData.user.email + "."
-          : "User was reactivated, but the temporary password email was not sent: " +
-            emailResult.error + " Share the password privately or retry Reactivate after fixing email delivery.",
+        message: "User reactivated successfully. Give them the standard temporary password privately; they must change it at first sign-in.",
       });
     }
 
