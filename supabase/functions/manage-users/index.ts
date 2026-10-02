@@ -170,10 +170,10 @@ Deno.serve(async (req) => {
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
 
       if (!displayName || !email || !denName) {
-        return reply({ error: "Name, email, and Den Name are required" }, 400);
+        return reply({ error: "Name, email, and Ranks are required" }, 400);
       }
       if (!allowedDenNames.has(denName)) {
-        return reply({ error: "Choose a valid Den Name" }, 400);
+        return reply({ error: "Choose a valid Ranks option" }, 400);
       }
       if (!temporaryPassword || temporaryPassword.length < 8) {
         return reply(
