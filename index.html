@@ -60,7 +60,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 
 <div class="grid">
 <section class="card"><h2>📖 Book Summary by User</h2><div class="muted" style="margin-bottom:8px">See what each reader is reading and the time spent on each book.</div>
-<div class="tablewrap"><table><thead><tr><th>User</th><th>Book</th><th>Time on Book</th></tr></thead><tbody id="booksBody"></tbody></table></div></section>
+<div class="tablewrap"><table><thead><tr><th>User</th><th>Ranks</th><th>Book</th><th>Time on Book</th></tr></thead><tbody id="booksBody"></tbody></table></div></section>
 <section class="card"><h2 id="accessTitle">What You Can Do</h2><div id="accessText"></div><button type="button" id="adminEdgeTestBtn" class="hidden" style="margin-top:12px" onclick="testAdminEdgeFunction()">Test Admin Connection</button><div id="adminTestStatus" class="muted" style="margin-top:10px"></div></section>
 </div>
 </div>
@@ -245,8 +245,8 @@ function render(){
  users.forEach(u=>{
    let byBook={}; userEntries(u.id).forEach(e=>byBook[e.book]=(byBook[e.book]||0)+e.minutes);
    let books=Object.entries(byBook).sort((a,b)=>b[1]-a[1]);
-   if(!books.length) rows.push(`<tr class="clickable" onclick="openUser(${u.id})"><td><b>${u.name}</b></td><td>—</td><td>0h 0m</td></tr>`);
-   else books.forEach(([book,mins],i)=>rows.push(`<tr class="clickable" onclick="openUser(${u.id})"><td>${i===0?'<b>'+u.name+'</b>':''}</td><td>${book}</td><td>${fmtTime(mins)}</td></tr>`));
+   if(!books.length) rows.push(`<tr class="clickable" onclick="openUser(${u.id})"><td><b>${u.name}</b></td><td>${u.denName||'—'}</td><td>—</td><td>0h 0m</td></tr>`);
+   else books.forEach(([book,mins],i)=>rows.push(`<tr class="clickable" onclick="openUser(${u.id})"><td>${i===0?'<b>'+u.name+'</b>':''}</td><td>${i===0?(u.denName||'—'):''}</td><td>${book}</td><td>${fmtTime(mins)}</td></tr>`));
  });
  booksBody.innerHTML=rows.join('');
  updatePermissions();
