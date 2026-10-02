@@ -181,6 +181,17 @@ let supabaseUserUuid=null;
 let activeChallengeId=null;
 
 const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+function challengeTitleText(start,end){
+ const startDate=new Date(start+'T12:00:00');
+ const endDate=new Date(end+'T12:00:00');
+ const startMonth=startDate.toLocaleDateString(undefined,{month:'long'});
+ const endMonth=endDate.toLocaleDateString(undefined,{month:'long'});
+ const startYear=startDate.getFullYear();
+ const endYear=endDate.getFullYear();
+ if(startMonth===endMonth && startYear===endYear) return `${startMonth} Reading Challenge`;
+ if(startYear===endYear) return `${startMonth}–${endMonth} Reading Challenge`;
+ return `${startMonth} ${startYear}–${endMonth} ${endYear} Reading Challenge`;
+}
 function todayLocalISO(){
  const d=new Date();
  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
@@ -208,6 +219,7 @@ function render(){
    }
  }
  if(viewer==='admin'&&!adminAuthenticated){viewer='loggedout';previousViewer='loggedout'} document.getElementById('roleSelect').value=viewer;
+ document.getElementById('challengeTitle').textContent=challengeTitleText(challenge.start,challenge.end);
  dateLabel.textContent=`${fmtDate(challenge.start)} – ${fmtDate(challenge.end)}`;
  readerCount.textContent=users.length; let active=entries.filter(inChallenge); teamTime.textContent=fmtTime(active.reduce((a,e)=>a+e.minutes,0)); bookCount.textContent=new Set(active.map(e=>e.book)).size; entryCount.textContent=active.length;
  let ranked=users.map(u=>({...u,s:stats(u)})).sort((a,b)=>b.s.mins-a.s.mins||b.s.streak-a.s.streak);
