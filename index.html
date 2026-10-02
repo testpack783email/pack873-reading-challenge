@@ -556,8 +556,27 @@ async function loadAllSupabaseData(){
  if(!profilesRes.ok)throw new Error(profiles.message||'Could not load Pack 873 users.');
  if(!entriesRes.ok)throw new Error(rows.message||'Could not load reading entries.');
  const callerIsAdmin=profiles.some(p=>p.id===supabaseUserUuid&&p.role==='admin'&&p.active===true);
+ let adminUsersById=new Map();
+ if(callerIsAdmin&&supabaseAccessToken){
+   const adminUsersRes=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
+     method:'POST',
+     headers:{
+       'apikey':SUPABASE_PUBLISHABLE_KEY,
+       'Authorization':'Bearer '+supabaseAccessToken,
+       'Content-Type':'application/json'
+     },
+     body:JSON.stringify({action:'list-users'})
+   });
+   let adminUsersData={};
+   try{adminUsersData=await adminUsersRes.json();}catch(_e){}
+   if(!adminUsersRes.ok)throw new Error(adminUsersData.error||adminUsersData.message||('HTTP '+adminUsersRes.status));
+   (adminUsersData.users||[]).forEach(u=>adminUsersById.set(u.id,u));
+ }
  const visibleProfiles=profiles.filter(p=>p.role!=='admin'&&(callerIsAdmin||p.active===true));
- users=visibleProfiles.map((p,i)=>({id:i+1,uuid:p.id,name:p.display_name,email:'',active:p.active!==false}));
+ users=visibleProfiles.map((p,i)=>{
+   const adminUser=adminUsersById.get(p.id);
+   return {id:i+1,uuid:p.id,name:p.display_name,email:callerIsAdmin?(adminUser?.email||''):'',active:p.active!==false};
+ });
  const byUuid=new Map(users.map(u=>[u.uuid,u.id]));
  entries=rows.filter(r=>byUuid.has(r.user_id)).map(r=>({id:r.id,userId:byUuid.get(r.user_id),date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:r.modified_by===r.user_id?'User':'Admin'}));
  const me=users.find(u=>u.uuid===supabaseUserUuid);
