@@ -169,10 +169,13 @@ Deno.serve(async (req) => {
       const role = body.role === "admin" ? "admin" : "user";
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
 
-      if (!displayName || !email || !denName) {
-        return reply({ error: "Name, email, and Ranks are required" }, 400);
+      if (!displayName || !email || (role === "user" && !denName)) {
+        return reply(
+          { error: role === "user" ? "Name, email, and Ranks are required" : "Name and email are required" },
+          400,
+        );
       }
-      if (!allowedDenNames.has(denName)) {
+      if (role === "user" && !allowedDenNames.has(denName)) {
         return reply({ error: "Choose a valid Ranks option" }, 400);
       }
       if (!temporaryPassword || temporaryPassword.length < 8) {
@@ -198,7 +201,7 @@ Deno.serve(async (req) => {
       const { error: insertError } = await adminClient.from("profiles").insert({
         id: created.user.id,
         display_name: displayName,
-        den_name: denName,
+        den_name: role === "user" ? denName : null,
         role,
         active: true,
         must_change_password: true,
@@ -221,7 +224,7 @@ Deno.serve(async (req) => {
         user: {
           id: created.user.id,
           display_name: displayName,
-          den_name: denName,
+          den_name: role === "user" ? denName : null,
           email,
           role,
           active: true,
