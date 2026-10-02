@@ -257,6 +257,12 @@ function renderUser(){
    userMeta.innerHTML='<span>'+(active?'Active user':'Inactive user')+' • Admin can manage all entries</span> <div class="actions" style="display:inline-flex;vertical-align:middle;margin-left:10px"><button type="button" id="toggleUserActiveBtn" class="'+(active?'danger':'secondary')+'">'+(active?'Deactivate User':'Reactivate User')+'</button>'+(active?'<button type="button" id="permanentDeleteUserBtn" class="danger">Permanently Delete</button>':'')+'</div>';
    const toggleBtn=document.getElementById('toggleUserActiveBtn'); if(toggleBtn)toggleBtn.onclick=toggleSelectedUserActive;
    const permanentDeleteBtn=document.getElementById('permanentDeleteUserBtn'); if(permanentDeleteBtn)permanentDeleteBtn.onclick=openPermanentDeleteUser;
+   if(selectedUser.mustChangePassword){
+     const notice=document.createElement('div');
+     notice.style.cssText='margin:10px 0;padding:10px 12px;border:1px solid #f0ca78;border-radius:9px;background:#fff8e8;color:#704b00;font-size:13px;font-weight:600';
+     notice.textContent='Temporary password assigned to '+selectedUser.name+' — waiting for password change.';
+     userMeta.prepend(notice);
+   }
  }else{
    userMeta.textContent=(Number(viewer)===selectedUser.id?'This is your profile — you may add entries, but submitted entries are locked':'View only — you cannot change this person’s data');
  }
@@ -532,6 +538,8 @@ async function addUser(){
    showToast(data.message||name+' created. Give them the standard temporary password privately.');
    await loadAllSupabaseData();
    render();
+   const createdUser=users.find(u=>u.uuid===data.user?.id);
+   if(createdUser)openUser(createdUser.id);
  }catch(e){
    error.textContent='Could not create user: '+e.message;
    error.style.display='block';
@@ -613,7 +621,7 @@ async function loadAllSupabaseData(){
  const visibleProfiles=profiles.filter(p=>p.role!=='admin'&&(callerIsAdmin||p.active===true));
  users=visibleProfiles.map((p,i)=>{
    const adminUser=adminUsersById.get(p.id);
-   return {id:i+1,uuid:p.id,name:p.display_name,email:callerIsAdmin?(adminUser?.email||''):'',active:p.active!==false};
+   return {id:i+1,uuid:p.id,name:p.display_name,email:callerIsAdmin?(adminUser?.email||''):'',active:p.active!==false,mustChangePassword:adminUser?.must_change_password===true};
  });
  const byUuid=new Map(users.map(u=>[u.uuid,u.id]));
  entries=rows.filter(r=>byUuid.has(r.user_id)).map(r=>({id:r.id,userId:byUuid.get(r.user_id),date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:r.modified_by===r.user_id?'User':'Admin'}));
@@ -621,6 +629,29 @@ async function loadAllSupabaseData(){
  if(me)authenticatedUserId=me.id;
  rebuildViewerOptions();
 }
+let passwordStatusRefreshRunning=false;
+async function refreshPendingPasswordStatus(){
+ if(passwordStatusRefreshRunning||document.hidden||viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken)return;
+ passwordStatusRefreshRunning=true;
+ try{
+   const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
+     method:'POST',
+     headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json'},
+     body:JSON.stringify({action:'list-users'})
+   });
+   const data=await res.json();
+   if(!res.ok)throw new Error(data.error||data.message||('HTTP '+res.status));
+   const statusByUuid=new Map((data.users||[]).map(u=>[u.id,u.must_change_password===true]));
+   users=users.map(u=>({...u,mustChangePassword:statusByUuid.get(u.uuid)===true}));
+   if(selectedUser){
+     selectedUser=users.find(u=>u.uuid===selectedUser.uuid)||null;
+     if(selectedUser)renderUser();
+   }
+ }catch(_e){}
+ finally{passwordStatusRefreshRunning=false;}
+}
+setInterval(refreshPendingPasswordStatus,30000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshPendingPasswordStatus();});
 function rebuildViewerOptions(){
  const select=document.getElementById('roleSelect');
  select.innerHTML='<option value="loggedout">-- Logged Out --</option>';
