@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
 
       const { data: profileData, error: listProfileError } = await adminClient
         .from("profiles")
-        .select("id, display_name, role, active");
+        .select("id, display_name, role, active, must_change_password");
       if (listProfileError) {
         return reply({ error: listProfileError.message }, 400);
       }
@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
           display_name: listedProfile?.display_name || "",
           role: listedProfile?.role || "user",
           active: listedProfile?.active !== false,
+          must_change_password: listedProfile?.must_change_password === true,
           email: authUser.email || "",
         };
       });
