@@ -443,7 +443,7 @@ function openChallenge(){
  document.getElementById('endDate').value=challenge.end;
  document.getElementById('challengeDialog').showModal();
 }
-function saveChallenge(){
+async function saveChallenge(){
  if(viewer!=='admin'||!adminAuthenticated){alert('Admin login required.');return false;}
  const start=document.getElementById('startDate').value;
  const end=document.getElementById('endDate').value;
@@ -451,6 +451,27 @@ function saveChallenge(){
  error.style.display='none';
  if(!start||!end){error.textContent='Please select both dates.';error.style.display='block';return false;}
  if(end<start){error.textContent='End date must be after start date.';error.style.display='block';return false;}
+ if(!supabaseAccessToken||!activeChallengeId){
+   error.textContent='Admin session is not connected to the active challenge. Please sign in again.';
+   error.style.display='block';
+   return false;
+ }
+ const res=await fetch(SUPABASE_URL+'/rest/v1/challenges?id=eq.'+encodeURIComponent(activeChallengeId),{
+   method:'PATCH',
+   headers:{
+     'apikey':SUPABASE_PUBLISHABLE_KEY,
+     'Authorization':'Bearer '+supabaseAccessToken,
+     'Content-Type':'application/json',
+     'Prefer':'return=representation'
+   },
+   body:JSON.stringify({start_date:start,end_date:end})
+ });
+ const rows=await res.json().catch(()=>[]);
+ if(!res.ok){
+   error.textContent=(rows&&rows.message)||'Could not save the challenge dates.';
+   error.style.display='block';
+   return false;
+ }
  challenge.start=start;
  challenge.end=end;
  document.getElementById('challengeDialog').close();
