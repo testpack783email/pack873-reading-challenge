@@ -95,7 +95,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div class="field"><label>Email</label><input id="newEmail" type="email" autocomplete="off"></div>
 <div class="field"><label>Role</label><select id="newRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
 </div>
-<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff8e6"><b>The user being created will receive an email with the temporary password at the email address provided.</b><div class="muted" style="margin-top:5px">They must change it when they first sign in.</div></div>
+<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff8e6"><b>🔐 Tell the user the Pack 873 standard temporary password through your normal private channel.</b><div class="muted" style="margin-top:5px">They must change it when they first sign in. The password is kept in Supabase as a function secret, never in this page.</div></div>
 <div id="userCreateError" style="display:none;color:#b42318;margin-top:12px"></div>
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="userCancelBtn">Cancel</button><button type="button" id="userSaveBtn">Create User</button></div></div></dialog>
 
@@ -347,11 +347,7 @@ async function toggleSelectedUserActive(){
    selectedUser=users.find(u=>u.uuid===selectedUuid)||null;
    render();
    if(selectedUser)renderUser(); else closeUser();
-   if(data.email_sent===true){
-     showToast(data.message||('Temporary password email sent for '+verb+'d user.'));
-   }else{
-     alert(data.message||('User was '+verb+'d, but email delivery was not confirmed. Share the temporary password privately until the Supabase function is deployed.'));
-   }
+   showToast(data.message||('User '+verb+'d successfully'));
  }catch(e){
    alert('Could not '+verb+' user: '+e.message);
    if(btn){btn.disabled=false;btn.textContent=makingActive?'Reactivate User':'Deactivate User';}
@@ -549,11 +545,7 @@ async function addUser(){
    let data={}; try{data=await res.json();}catch(_e){}
    if(!res.ok) throw new Error(data.error||data.message||('HTTP '+res.status));
    document.getElementById('userDialog').close();
-   if(data.email_sent===true){
-     showToast(data.message||('Temporary password email sent to '+email+'.'));
-   }else{
-     alert(data.message||(''+name+' was created, but email delivery was not confirmed. Share the temporary password privately until the Supabase function is deployed.'));
-   }
+   showToast(data.message||name+' created. Give them the standard temporary password privately.');
    await loadAllSupabaseData();
    render();
    const createdUser=users.find(u=>u.uuid===data.user?.id);
