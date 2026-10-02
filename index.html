@@ -877,7 +877,6 @@ async function testAdminEdgeFunction(){
 function updatePermissions(){
  let isAdmin=viewer==='admin' && adminAuthenticated;
  const leaderboardAdminDescription=document.getElementById('leaderboardAdminDescription');if(leaderboardAdminDescription)leaderboardAdminDescription.classList.toggle('hidden',!isAdmin);
- const leaderboardAdminDescription=document.getElementById('leaderboardAdminDescription');if(leaderboardAdminDescription)leaderboardAdminDescription.classList.toggle('hidden',!isAdmin);
  const changePasswordBtn=document.getElementById('changePasswordBtn');if(changePasswordBtn)changePasswordBtn.classList.toggle('hidden',!supabaseAccessToken||passwordChangeRequired);
  const test=document.getElementById('adminTestStatus');
  if(test) test.textContent=isAdmin?'✓ Admin controls unlocked':'Normal user permissions active';
