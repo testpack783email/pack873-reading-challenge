@@ -102,6 +102,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <dialog id="changePasswordDialog"><div class="modal"><h2 id="changePasswordTitle">Change Your Password</h2>
 <p class="muted" id="changePasswordPrompt">Choose a new password for your Pack 873 account.</p>
 <div class="formgrid"><div class="field full"><label>New password</label><input id="newAccountPassword" type="password" autocomplete="new-password"></div><div class="field full"><label>Confirm new password</label><input id="confirmAccountPassword" type="password" autocomplete="new-password"></div></div>
+<label style="margin-top:6px;color:#697386"><input type="checkbox" id="showAccountPasswords"> Show passwords</label>
 <div id="changePasswordError" style="display:none;color:#b42318;margin-top:12px"></div>
 <div class="row" style="justify-content:flex-end;margin-top:18px"><button id="forcedPasswordLogoutBtn" type="button" class="secondary hidden" onclick="logoutAll()">Log Out</button><button type="button" id="changePasswordSubmitBtn" onclick="submitPasswordChange()">Change Password</button></div>
 </div></dialog>
@@ -695,6 +696,9 @@ function openChangePassword(required,profile){
  document.getElementById('forcedPasswordLogoutBtn').classList.toggle('hidden',!passwordChangeRequired);
  document.getElementById('newAccountPassword').value='';
  document.getElementById('confirmAccountPassword').value='';
+ document.getElementById('showAccountPasswords').checked=false;
+ document.getElementById('newAccountPassword').type='password';
+ document.getElementById('confirmAccountPassword').type='password';
  const error=document.getElementById('changePasswordError');error.textContent='';error.style.display='none';
  if(!dlg.open)dlg.showModal();
 }
@@ -880,6 +884,7 @@ document.getElementById('userLoginCancelBtn').onclick=function(){cancelUserLogin
 document.getElementById('showUserPw').onchange=function(){document.getElementById('userLoginPassword').type=this.checked?'text':'password';};
 document.getElementById('userLoginPassword').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();performUserLogin();}};
 document.getElementById('changePasswordDialog').addEventListener('cancel',function(e){if(passwordChangeRequired)e.preventDefault();});
+document.getElementById('showAccountPasswords').onchange=function(){const type=this.checked?'text':'password';document.getElementById('newAccountPassword').type=type;document.getElementById('confirmAccountPassword').type=type;};
 document.getElementById('confirmAccountPassword').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();submitPasswordChange();}};
 
 document.getElementById('permanentDeleteUserConfirmBtn').addEventListener('click',permanentlyDeleteUser);
