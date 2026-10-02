@@ -76,9 +76,9 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <dialog id="entryDialog"><div class="modal">
 <h2 id="entryHeading">Add Reading Entry</h2><input type="hidden" id="entryId">
 <div class="formgrid">
-<div class="field"><label>Date</label><input id="entryDate" type="date"></div>
-<div class="field"><label>Minutes Read</label><input id="entryMinutes" type="number" min="1"><div id="minutesReadable" class="muted" style="margin-top:7px;font-weight:700">Enter minutes to see hours &amp; minutes</div></div>
-<div class="field full"><label>Book</label><input id="entryBook" placeholder="Book title"></div>
+<div class="field"><label>Date</label><input id="entryDate" type="date" required></div>
+<div class="field"><label>Minutes Read</label><input id="entryMinutes" type="number" min="1" step="1" required><div id="minutesReadable" class="muted" style="margin-top:7px;font-weight:700">Enter minutes to see hours &amp; minutes</div></div>
+<div class="field full"><label>Book</label><input id="entryBook" placeholder="Book title" required></div>
 <div class="field full"><label>Notes (optional)</label><input id="entryNotes" placeholder="Chapter, pages, comments..."></div>
 </div><div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="entryCancelBtn">Cancel</button><button type="button" id="entrySaveBtn">Save Entry</button></div></div></dialog>
 
@@ -397,9 +397,13 @@ async function saveEntry(){
  if(!id&&!canAddForUser(selectedUser.id)){alert('You can only add entries for yourself.');return;}
  const date=document.getElementById('entryDate').value;
  const book=document.getElementById('entryBook').value.trim();
- const minutes=Number(document.getElementById('entryMinutes').value);
+ const minutesInput=document.getElementById('entryMinutes');
+ const minutes=Number(minutesInput.value);
+ const bookInput=document.getElementById('entryBook');
  const notes=document.getElementById('entryNotes').value.trim();
- if(!date||!book||!minutes||minutes<1){alert('Please enter date, book, and reading minutes.');return;}
+ if(!date){document.getElementById('entryDate').reportValidity();return;}
+ if(!book){bookInput.setCustomValidity('Please enter a book title.');bookInput.reportValidity();bookInput.setCustomValidity('');return;}
+ if(!minutesInput.value||!Number.isInteger(minutes)||minutes<1){minutesInput.reportValidity();return;}
  if(id){
    const e=entries.find(x=>x.id===id); if(!e)return;
    Object.assign(e,{date,book,minutes,notes,modifiedBy:'Admin'});
