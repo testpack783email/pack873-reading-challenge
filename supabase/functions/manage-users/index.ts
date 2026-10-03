@@ -25,6 +25,52 @@ function reply(body: unknown, status = 200) {
   });
 }
 
+async function sendTemporaryPasswordEmail(input: {
+  to: string;
+  name: string;
+  temporaryPassword: string;
+  event: "created" | "reactivated";
+}): Promise<boolean> {
+  const bridgeUrl = Deno.env.get("GMAIL_BRIDGE_URL");
+  const bridgeSecret = Deno.env.get("GMAIL_BRIDGE_SECRET");
+
+  if (!bridgeUrl || !bridgeSecret || !input.to) {
+    return false;
+  }
+
+  try {
+    const endpoint = new URL(bridgeUrl);
+    if (endpoint.protocol !== "https:") {
+      return false;
+    }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: bridgeSecret,
+        to: input.to,
+        name: input.name,
+        tempPassword: input.temporaryPassword,
+        event: input.event,
+      }),
+    });
+
+    const raw = await response.text();
+    let result: { success?: boolean } = {};
+    try {
+      result = raw ? JSON.parse(raw) : {};
+    } catch {
+      return false;
+    }
+
+    return response.ok && result.success === true;
+  } catch {
+    // Never log the request body, temporary password, or bridge secret.
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -224,9 +270,19 @@ Deno.serve(async (req) => {
         );
       }
 
+      const emailSent = await sendTemporaryPasswordEmail({
+        to: email,
+        name: displayName,
+        temporaryPassword,
+        event: "created",
+      });
+
       return reply({
         success: true,
-        message: `${displayName} created successfully. Give them the standard temporary password privately; they must change it at first sign-in.`,
+        email_sent: emailSent,
+        message: emailSent
+          ? `${displayName} created successfully. A temporary-password email was sent to ${email}. They must change it at first sign-in.`
+          : `${displayName} was created, but the email could not be sent. Share the standard temporary password privately; they must change it at first sign-in.`,
         user: {
           id: created.user.id,
           display_name: displayName,
@@ -276,7 +332,7 @@ Deno.serve(async (req) => {
       }
       const { data: targetProfile, error: targetProfileError } = await adminClient
         .from("profiles")
-        .select("id, role")
+        .select("id, role, display_name")
         .eq("id", targetUserId)
         .maybeSingle();
       if (targetProfileError) {
@@ -287,6 +343,17 @@ Deno.serve(async (req) => {
       }
       if (targetProfile.role === "admin") {
         return reply({ error: "The app is configured for one Admin; Admin accounts cannot be reactivated here" }, 409);
+      }
+
+      let targetEmail = "";
+      try {
+        const { data: { user: targetAuthUser }, error: targetAuthError } =
+          await adminClient.auth.admin.getUserById(targetUserId);
+        if (!targetAuthError) {
+          targetEmail = targetAuthUser?.email || "";
+        }
+      } catch {
+        // Reactivation can still proceed; the Admin will get a delivery fallback.
       }
 
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
@@ -319,9 +386,19 @@ Deno.serve(async (req) => {
         );
       }
 
+      const emailSent = await sendTemporaryPasswordEmail({
+        to: targetEmail,
+        name: targetProfile.display_name || targetEmail.split("@")[0] || "Scout",
+        temporaryPassword,
+        event: "reactivated",
+      });
+
       return reply({
         success: true,
-        message: "User reactivated successfully. Give them the standard temporary password privately; they must change it at first sign-in.",
+        email_sent: emailSent,
+        message: emailSent
+          ? `User reactivated successfully. A temporary-password email was sent to ${targetEmail}. They must change it at first sign-in.`
+          : "User was reactivated, but the email could not be sent. Share the standard temporary password privately; they must change it at first sign-in.",
       });
     }
 
