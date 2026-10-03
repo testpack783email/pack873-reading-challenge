@@ -741,7 +741,7 @@ async function loadMySupabaseEntries(){
  const rows=await res.json();
  if(!res.ok)throw new Error(rows.message||'Could not load your reading entries.');
  entries=entries.filter(e=>e.userId!==authenticatedUserId);
- rows.forEach(r=>entries.push({id:r.id,userId:authenticatedUserId,date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:'Supabase'}));
+ rows.forEach(r=>entries.push({id:r.id,userId:authenticatedUserId,date:r.reading_date,book:r.book_title,minutes:r.minutes_read,notes:r.notes||'',modifiedBy:'User'}));
 }
 async function addSupabaseEntryForUser(targetUserUuid,date,book,minutes,notes){
  if(!supabaseAccessToken||!targetUserUuid||!activeChallengeId)throw new Error('Supabase session is not ready. Please log in again.');
