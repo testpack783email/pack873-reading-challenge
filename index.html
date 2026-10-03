@@ -80,7 +80,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div class="field"><label>Minutes Read</label><input id="entryMinutes" type="number" min="1" step="1" required><div id="minutesReadable" class="muted" style="margin-top:7px;font-weight:700">Enter minutes to see hours &amp; minutes</div></div>
 <div class="field full"><label>Book</label><input id="entryBook" placeholder="Book title" required></div>
 <div class="field full"><label>Notes (optional)</label><input id="entryNotes" placeholder="Chapter, pages, comments..."></div>
-</div><div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="entryCancelBtn">Cancel</button><button type="button" id="entrySaveBtn">Save Entry</button></div></div></dialog>
+</div><div id="entrySaveError" role="alert" style="display:none;color:#b42318;margin-top:12px"></div><div class="row" style="justify-content:flex-end;margin-top:18px"><button type="button" class="secondary" id="entryCancelBtn">Cancel</button><button type="button" id="entrySaveBtn">Save Entry</button></div></div></dialog>
 
 <dialog id="challengeDialog"><div class="modal"><h2>Set Challenge Dates</h2>
 <p class="muted">A challenge is usually about two months. Streak and leaderboard totals are calculated inside this period.</p>
@@ -378,6 +378,7 @@ function openEntry(){
  if(!selectedUser||!canAddForUser(selectedUser.id))return;
  document.getElementById('entryHeading').textContent='Add Reading Entry for '+selectedUser.name;
  document.getElementById('entryId').value='';
+ const saveError=document.getElementById('entrySaveError');saveError.textContent='';saveError.style.display='none';
  document.getElementById('entryDate').value=todayLocalISO();
  const dateInput=document.getElementById('entryDate');
  dateInput.min=challenge.start; dateInput.max=challenge.end;
@@ -391,7 +392,10 @@ function editEntry(id){
  const e=entries.find(x=>x.id===id); if(!e)return;
  document.getElementById('entryHeading').textContent="Edit "+selectedUser.name+"'s Reading Entry";
  document.getElementById('entryId').value=e.id;
- document.getElementById('entryDate').value=e.date;
+ const dateInput=document.getElementById('entryDate');
+ dateInput.min=challenge.start; dateInput.max=challenge.end;
+ dateInput.value=e.date;
+ const saveError=document.getElementById('entrySaveError');saveError.textContent='';saveError.style.display='none';
  document.getElementById('entryBook').value=e.book;
  document.getElementById('entryMinutes').value=e.minutes;
  document.getElementById('entryNotes').value=e.notes||'';
@@ -412,6 +416,8 @@ function updateMinutesReadable(){
 }
 async function saveEntry(){
  if(!selectedUser)return;
+ const saveError=document.getElementById('entrySaveError');
+ saveError.textContent='';saveError.style.display='none';
  const id=Number(document.getElementById('entryId').value||0);
  if(id&&(viewer!=='admin'||!adminAuthenticated)){alert('Only an Admin can edit a submitted entry.');return;}
  if(!id&&!canAddForUser(selectedUser.id)){alert('You can only add entries for yourself.');return;}
@@ -426,8 +432,22 @@ async function saveEntry(){
  if(!minutesInput.value||!Number.isInteger(minutes)||minutes<1){minutesInput.reportValidity();return;}
  if(id){
    const e=entries.find(x=>x.id===id); if(!e)return;
-   Object.assign(e,{date,book,minutes,notes,modifiedBy:'Admin'});
-   showToast('Entry updated by Admin.');
+   try{
+     const updated=await updateSupabaseEntry(id,selectedUser.uuid,date,book,minutes,notes);
+     Object.assign(e,{
+       date:updated.reading_date,
+       book:updated.book_title,
+       minutes:updated.minutes_read,
+       notes:updated.notes||'',
+       modifiedBy:'Admin'
+     });
+     showToast('Entry updated in Supabase.');
+   }catch(err){
+     console.error('Pack 873 Admin reading entry update error:',err);
+     saveError.textContent='Could not update entry: '+String(err.message||err);
+     saveError.style.display='block';
+     return;
+   }
  }else{
    if(viewer!=='admin' && authenticatedUserId===selectedUser.id){
      try{
@@ -730,6 +750,24 @@ async function addSupabaseEntryForUser(targetUserUuid,date,book,minutes,notes){
    throw new Error('Supabase save failed (HTTP '+res.status+'): '+detail);
  }
  if(!Array.isArray(rows)||!rows.length)throw new Error('Supabase returned success but no saved row was returned.');
+ return rows[0];
+}
+async function updateSupabaseEntry(entryId,targetUserUuid,date,book,minutes,notes){
+ if(!supabaseAccessToken||!supabaseUserUuid||!activeChallengeId||!targetUserUuid)throw new Error('Supabase session is not ready. Please log in again.');
+ const query='id=eq.'+encodeURIComponent(entryId)+'&user_id=eq.'+encodeURIComponent(targetUserUuid)+'&challenge_id=eq.'+encodeURIComponent(activeChallengeId);
+ const res=await fetch(SUPABASE_URL+'/rest/v1/reading_entries?'+query,{
+   method:'PATCH',
+   headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,'Content-Type':'application/json','Prefer':'return=representation'},
+   body:JSON.stringify({reading_date:date,book_title:book,minutes_read:minutes,notes:notes||null,modified_by:supabaseUserUuid})
+ });
+ const raw=await res.text();
+ let rows;
+ try{rows=raw?JSON.parse(raw):[];}catch(_){rows=[];}
+ if(!res.ok){
+   const detail=(rows&&typeof rows==='object'?(rows.message||rows.details||rows.hint||rows.code):'')||raw||'No response body';
+   throw new Error('Supabase update failed (HTTP '+res.status+'): '+detail);
+ }
+ if(!Array.isArray(rows)||!rows.length)throw new Error('Supabase returned success but did not confirm an updated row.');
  return rows[0];
 }
 async function addMySupabaseEntry(date,book,minutes,notes){
