@@ -166,7 +166,13 @@ Deno.serve(async (req) => {
       const displayName = String(body.display_name || "").trim();
       const email = String(body.email || "").trim().toLowerCase();
       const denName = String(body.den_name || "").trim();
-      const role = body.role === "admin" ? "admin" : "user";
+      if (body.role === "admin") {
+        return reply(
+          { error: "This app is configured for one Admin. New accounts must use the User role." },
+          409,
+        );
+      }
+      const role = "user";
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
 
       if (!displayName || !email || (role === "user" && !denName)) {
@@ -242,12 +248,21 @@ Deno.serve(async (req) => {
         return reply({ error: "You cannot deactivate your own Admin account" }, 400);
       }
 
-      const { error } = await adminClient
+      const { data: updatedProfile, error } = await adminClient
         .from("profiles")
         .update({ active: false })
-        .eq("id", targetUserId);
+        .eq("id", targetUserId)
+        .neq("role", "admin")
+        .select("id")
+        .maybeSingle();
       if (error) {
         return reply({ error: error.message }, 400);
+      }
+      if (!updatedProfile) {
+        return reply(
+          { error: "User was not found or Admin accounts cannot be deactivated" },
+          409,
+        );
       }
 
       return reply({ success: true, message: "User deactivated successfully" });
@@ -259,6 +274,21 @@ Deno.serve(async (req) => {
       if (!targetUserId) {
         return reply({ error: "User ID is required" }, 400);
       }
+      const { data: targetProfile, error: targetProfileError } = await adminClient
+        .from("profiles")
+        .select("id, role")
+        .eq("id", targetUserId)
+        .maybeSingle();
+      if (targetProfileError) {
+        return reply({ error: targetProfileError.message }, 400);
+      }
+      if (!targetProfile) {
+        return reply({ error: "User was not found" }, 404);
+      }
+      if (targetProfile.role === "admin") {
+        return reply({ error: "The app is configured for one Admin; Admin accounts cannot be reactivated here" }, 409);
+      }
+
       const temporaryPassword = Deno.env.get("STANDARD_TEMP_PASSWORD");
       if (!temporaryPassword || temporaryPassword.length < 8) {
         return reply(
