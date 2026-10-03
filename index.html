@@ -168,6 +168,17 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
   </div>
 </dialog>
 
+<dialog id="deactivateUserDialog" aria-labelledby="deactivateUserHeading" aria-describedby="deactivateUserMessage">
+  <div class="modal">
+    <h2 id="deactivateUserHeading">Deactivate User?</h2>
+    <p id="deactivateUserMessage" class="muted"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:18px">
+      <button type="button" class="secondary" onclick="document.getElementById('deactivateUserDialog').close()">Cancel</button>
+      <button type="button" class="danger" onclick="confirmDeactivateSelectedUser()">Deactivate User</button>
+    </div>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -262,7 +273,7 @@ function renderUser(){
  if(viewer==='admin'&&adminAuthenticated){
    const active=selectedUser.active!==false;
    userMeta.innerHTML='<span>'+(active?'Active user':'Inactive user')+' • Admin can manage all entries</span> <div class="actions" style="display:inline-flex;vertical-align:middle;margin-left:10px"><button type="button" id="toggleUserActiveBtn" class="'+(active?'danger':'secondary')+'">'+(active?'Deactivate User':'Reactivate User')+'</button>'+(active?'<button type="button" id="permanentDeleteUserBtn" class="danger">Permanently Delete</button>':'')+'</div>';
-   const toggleBtn=document.getElementById('toggleUserActiveBtn'); if(toggleBtn)toggleBtn.onclick=toggleSelectedUserActive;
+   const toggleBtn=document.getElementById('toggleUserActiveBtn'); if(toggleBtn)toggleBtn.onclick=()=>toggleSelectedUserActive();
    const permanentDeleteBtn=document.getElementById('permanentDeleteUserBtn'); if(permanentDeleteBtn)permanentDeleteBtn.onclick=openPermanentDeleteUser;
    if(selectedUser.mustChangePassword){
      const notice=document.createElement('div');
@@ -328,12 +339,21 @@ async function permanentlyDeleteUser(){
  }
 }
 
-async function toggleSelectedUserActive(){
+function confirmDeactivateSelectedUser(){
+ document.getElementById('deactivateUserDialog').close();
+ toggleSelectedUserActive(true);
+}
+
+async function toggleSelectedUserActive(confirmed=false){
  if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken||!selectedUser)return;
  const makingActive=selectedUser.active===false;
  const action=makingActive?'reactivate-user':'deactivate-user';
  const verb=makingActive?'reactivate':'deactivate';
- if(!makingActive && !confirm('Deactivate '+selectedUser.name+'? Their reading history will be kept, but they will not be allowed to use the Pack 873 app until reactivated.'))return;
+ if(!makingActive && !confirmed){
+   document.getElementById('deactivateUserMessage').textContent='Deactivate '+selectedUser.name+'? Their reading history will be kept, but they will not be allowed to use the Pack 873 app until reactivated.';
+   document.getElementById('deactivateUserDialog').showModal();
+   return;
+ }
  const btn=document.getElementById('toggleUserActiveBtn'); if(btn){btn.disabled=true;btn.textContent=makingActive?'Reactivating…':'Deactivating…';}
  try{
    const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
@@ -350,11 +370,10 @@ async function toggleSelectedUserActive(){
    if(selectedUser)renderUser(); else closeUser();
    showToast(data.message||('User '+verb+'d successfully'));
  }catch(e){
-   alert('Could not '+verb+' user: '+e.message);
+   showToast('Could not '+verb+' user: '+e.message);
    if(btn){btn.disabled=false;btn.textContent=makingActive?'Reactivate User':'Deactivate User';}
  }
 }
-
 function openEntry(){
  if(!selectedUser||!canAddForUser(selectedUser.id))return;
  document.getElementById('entryHeading').textContent='Add Reading Entry for '+selectedUser.name;
