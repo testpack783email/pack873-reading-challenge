@@ -69,7 +69,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div class="grid">
 <section class="card"><h2>📖 Book Summary by User</h2><div class="muted" style="margin-bottom:8px">See what each reader is reading and the time spent on each book.</div>
 <div class="tablewrap"><table><thead><tr><th>User</th><th>Ranks</th><th>Book</th><th>Time on Book</th></tr></thead><tbody id="booksBody"></tbody></table></div></section>
-<section class="card"><h2 id="accessTitle">What You Can Do</h2><div id="accessText"></div><button type="button" id="adminEdgeTestBtn" class="hidden" style="margin-top:12px" onclick="testAdminEdgeFunction()">Test Admin Connection</button><div id="adminTestStatus" class="muted" style="margin-top:10px"></div></section>
+<section class="card"><h2 id="accessTitle">What You Can Do</h2><div id="accessText"></div></section>
 </div>
 </div>
 
@@ -979,43 +979,10 @@ function cancelAdminLogin(){
  render();
 }
 function adminLogout(){logoutAll();}
-async function testAdminEdgeFunction(){
- const btn=document.getElementById('adminEdgeTestBtn');
- const status=document.getElementById('adminTestStatus');
- if(!adminAuthenticated||viewer!=='admin'||!supabaseAccessToken){
-   if(status) status.textContent='Admin login required.';
-   return;
- }
- btn.disabled=true; btn.textContent='Testing…';
- if(status) status.textContent='Contacting secure Admin function…';
- try{
-   const res=await fetch(SUPABASE_URL+'/functions/v1/manage-users',{
-     method:'POST',
-     headers:{
-       'apikey':SUPABASE_PUBLISHABLE_KEY,
-       'Authorization':'Bearer '+supabaseAccessToken,
-       'Content-Type':'application/json'
-     },
-     body:JSON.stringify({action:'test'})
-   });
-   let data={};
-   try{ data=await res.json(); }catch(_e){}
-   if(!res.ok) throw new Error(data.error||data.message||('HTTP '+res.status));
-   if(status) status.textContent='✓ '+(data.message||'Pack 873 Admin verified')+(data.admin?' — '+data.admin:'');
-   showToast(data.message||'Pack 873 Admin verified');
- }catch(e){
-   if(status) status.textContent='Admin connection failed: '+e.message;
- }finally{
-   btn.disabled=false; btn.textContent='Test Admin Connection';
- }
-}
 function updatePermissions(){
  let isAdmin=viewer==='admin' && adminAuthenticated;
  const leaderboardAdminDescription=document.getElementById('leaderboardAdminDescription');if(leaderboardAdminDescription)leaderboardAdminDescription.classList.toggle('hidden',!isAdmin);
  const changePasswordBtn=document.getElementById('changePasswordBtn');if(changePasswordBtn)changePasswordBtn.classList.toggle('hidden',!supabaseAccessToken||passwordChangeRequired);
- const test=document.getElementById('adminTestStatus');
- if(test) test.textContent=isAdmin?'✓ Admin controls unlocked':'Normal user permissions active';
- const edgeBtn=document.getElementById('adminEdgeTestBtn'); if(edgeBtn) edgeBtn.classList.toggle('hidden',!isAdmin);
  document.getElementById('challengeBtn').classList.toggle('hidden',!isAdmin);
  document.getElementById('addUserBtn').classList.toggle('hidden',!isAdmin);
  if(isAdmin){
