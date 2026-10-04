@@ -394,7 +394,7 @@ function openEntry(){
  const saveError=document.getElementById('entrySaveError');saveError.textContent='';saveError.style.display='none';
  document.getElementById('entryDate').value=todayLocalISO();
  const dateInput=document.getElementById('entryDate');
- dateInput.min=challenge.start; dateInput.max=challenge.end;
+ dateInput.min=challenge.start; dateInput.max=challenge.end<todayLocalISO()?challenge.end:todayLocalISO();
  document.getElementById('entryBook').value='';
  document.getElementById('entryMinutes').value='';
  document.getElementById('entryNotes').value='';
@@ -406,7 +406,7 @@ function editEntry(id){
  document.getElementById('entryHeading').textContent="Edit "+selectedUser.name+"'s Reading Entry";
  document.getElementById('entryId').value=e.id;
  const dateInput=document.getElementById('entryDate');
- dateInput.min=challenge.start; dateInput.max=challenge.end;
+ dateInput.min=challenge.start; dateInput.max=challenge.end<todayLocalISO()?challenge.end:todayLocalISO();
  dateInput.value=e.date;
  const saveError=document.getElementById('entrySaveError');saveError.textContent='';saveError.style.display='none';
  document.getElementById('entryBook').value=e.book;
@@ -441,6 +441,7 @@ async function saveEntry(){
  const bookInput=document.getElementById('entryBook');
  const notes=document.getElementById('entryNotes').value.trim();
  if(!date){document.getElementById('entryDate').reportValidity();return;}
+ if(date>todayLocalISO()){saveError.textContent='Reading date cannot be in the future.';saveError.style.display='block';return;}
  if(!book){bookInput.setCustomValidity('Please enter a book title.');bookInput.reportValidity();bookInput.setCustomValidity('');return;}
  if(!minutesInput.value||!Number.isInteger(minutes)||minutes<1){minutesInput.reportValidity();return;}
  if(id){
