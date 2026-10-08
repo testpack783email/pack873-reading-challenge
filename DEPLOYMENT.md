@@ -19,3 +19,11 @@ The migration gives existing profiles `must_change_password = false`; only new a
 - Deactivation preserves reading history. Permanent deletion removes the user's reading entries, profile, and Auth account.
 - A signed-in user can change their password from the header.
 
+
+## Rank book recommendation PDFs
+
+1. Apply `supabase/migrations/20261008000000_rank_book_recommendations.sql` in the same Supabase project before using this feature. In the Dashboard, open **SQL Editor**, paste the migration contents, and run it. It creates the private `pack873-rank-recommendations` Storage bucket and RLS policies.
+2. The six files use fixed paths: `ranks/lion.pdf`, `ranks/tiger.pdf`, `ranks/wolf.pdf`, `ranks/bear.pdf`, `ranks/webelos.pdf`, and `ranks/arrow-of-light.pdf`.
+3. Sign into the app as Admin, click **Book Recommendations** in the Current Challenge card, choose a rank, select a PDF (up to 15 MB), and click **Upload / Replace PDF**. To update a document's contents, revise the PDF outside the app and upload the replacement for that rank. Use **Remove PDF** to remove a recommendation.
+4. Signed-in readers can choose any rank and download its PDF. The bucket is private; download links expire after one hour. Only active Admins can upload, replace, or remove files.
+
