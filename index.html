@@ -1003,7 +1003,8 @@ function openBookRecommendations(){
  if(!supabaseAccessToken){showToast('Please sign in to view the Pack 873 book recommendations.');return;}
  const dlg=document.getElementById('bookRecommendationsDialog'),rankSelect=document.getElementById('bookRecommendationRank');
  const myProfile=users.find(u=>u.uuid===supabaseUserUuid);
- rankSelect.value=myProfile?.denName||'';
+ const registeredRank=(myProfile?.denName||'').trim();
+ rankSelect.value=RECOMMENDATION_RANKS.find(rank=>rank.toLowerCase()===registeredRank.toLowerCase())||'';
  document.getElementById('bookRecommendationDownload').classList.add('hidden');
  document.getElementById('bookRecommendationRemoveBtn').classList.add('hidden');
  document.getElementById('bookRecommendationStatus').textContent=rankSelect.value?'Loading the '+rankSelect.value+' reading list…':'Choose a rank to see its recommendation PDF.';
@@ -1033,7 +1034,7 @@ async function loadRankBookRecommendation(){
   const signed=result.signedURL||result.signedUrl;if(!signed)throw new Error('The PDF link could not be created.');
   download.href=/^https?:\/\//i.test(signed)?signed:SUPABASE_URL+'/storage/v1'+(signed.startsWith('/')?signed:'/'+signed);
   download.download='Pack873-'+rank.replace(/\s+/g,'-')+'-Book-Recommendations.pdf';download.textContent='⬇ Download '+rank+' Recommendations PDF';download.classList.remove('hidden');
-  removeBtn.classList.toggle('hidden',!isAdmin);status.textContent='The '+rank+' recommended reading PDF is ready.';
+  removeBtn.classList.toggle('hidden',!isAdmin);status.textContent=rank+' recommended reading PDF is ready! These are ideas to get you started—choose any book that catches your interest.';
  }catch(error){
   const message=String(error.message||error),missing=/not found|object.*missing|no such object/i.test(message);
   status.textContent=missing?(isAdmin?'No PDF is uploaded for '+rank+' yet. Choose a PDF below to add it.':'There is no reading-list PDF posted for '+rank+' yet. Please check back later.'):'Could not load this PDF: '+message+' If this continues, contact the Admin.';
