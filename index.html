@@ -28,6 +28,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 @keyframes turn-book-page{0%,13%{transform:rotateY(0deg)}42%,61%{transform:rotateY(-165deg)}90%,100%{transform:rotateY(0deg)}}
 @media(max-width:600px){.reading-book{width:56px;height:48px}}
 @media(prefers-reduced-motion:reduce){.reading-book .turning-page{animation:none}}
+.recommendation-dialog{width:min(680px,94vw)}.recommendation-rank{display:flex;flex-direction:column;gap:7px;margin:14px 0}.recommendation-rank select{width:100%;font-size:16px}.recommendation-status{padding:14px;border-radius:10px;background:#f6f8fb;color:#53677f;line-height:1.5;min-height:52px}.recommendation-download{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:11px 15px;border-radius:9px;background:#23395d;color:#fff;text-decoration:none;font-weight:700}.recommendation-admin{margin-top:18px;padding:14px;border:1px solid #e3e7ee;border-radius:11px;background:#fbfcfe}.recommendation-admin input[type=file]{width:100%;margin:8px 0 10px}.recommendation-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;margin-top:16px}
 </style>
 </head>
 <body>
@@ -51,7 +52,7 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
 <div id="liveContent" class="hidden" style="display:none">
 <section class="card challenge">
  <div class="row spread"><div><div class="muted">CURRENT CHALLENGE</div><h2 id="challengeTitle">September–October Reading Challenge</h2><div id="dateLabel"></div></div>
- <button id="challengeBtn" onclick="openChallenge()">⚙ Set Challenge Dates</button></div>
+ <div class="row challenge-actions"><button type="button" id="bookRecommendationsBtn" class="secondary" onclick="openBookRecommendations()">📚 Book Recommendations</button><button id="challengeBtn" onclick="openChallenge()">⚙ Set Challenge Dates</button></div></div>
 </section>
 
 <section class="stats">
@@ -191,6 +192,22 @@ dialog{border:0;border-radius:14px;padding:0;width:min(520px,92vw);box-shadow:0 
   </div>
 </dialog>
 
+<dialog id="bookRecommendationsDialog" class="recommendation-dialog" aria-labelledby="bookRecommendationsTitle">
+ <div class="modal"><h2 id="bookRecommendationsTitle">📚 Book Recommendations</h2>
+  <p class="muted">Choose a Scout rank to view and download its recommended reading PDF.</p>
+  <div class="recommendation-rank"><label for="bookRecommendationRank">Scout rank</label><select id="bookRecommendationRank">
+   <option value="">Choose a rank</option><option value="Lion">Lion</option><option value="Tiger">Tiger</option><option value="Wolf">Wolf</option><option value="Bear">Bear</option><option value="Webelos">Webelos</option><option value="Arrow of Light">Arrow of Light</option>
+  </select></div>
+  <div id="bookRecommendationStatus" class="recommendation-status" role="status" aria-live="polite">Choose a rank to see its recommendation PDF.</div>
+  <a id="bookRecommendationDownload" class="recommendation-download hidden" href="#" target="_blank" rel="noopener">⬇ Download PDF</a>
+  <section id="bookRecommendationAdminTools" class="recommendation-admin hidden">
+   <b>Admin: manage this rank’s PDF</b><p class="muted" style="margin:6px 0">Upload a PDF to add it or replace the current file. To edit the document itself, update it externally and upload the revised PDF here.</p>
+   <label for="bookRecommendationFile">PDF file (maximum 15 MB)</label><input id="bookRecommendationFile" type="file" accept="application/pdf,.pdf">
+   <div class="row"><button type="button" id="bookRecommendationUploadBtn">Upload / Replace PDF</button><button type="button" id="bookRecommendationRemoveBtn" class="danger hidden">Remove PDF</button></div>
+  </section>
+  <div class="recommendation-actions"><button type="button" class="secondary" id="bookRecommendationsCloseBtn">Close</button></div>
+ </div>
+</dialog>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -214,6 +231,8 @@ const SUPABASE_PUBLISHABLE_KEY='sb_publishable_MiL6D0pvBXe-KujTUk0Pyw_BgaitrgG';
 let supabaseAccessToken=null;
 let supabaseUserUuid=null;
 let activeChallengeId=null;
+const RECOMMENDATION_BUCKET='pack873-rank-recommendations';
+const RECOMMENDATION_RANKS=['Lion','Tiger','Wolf','Bear','Webelos','Arrow of Light'];
   
 const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 function challengeTitleText(start,end){
@@ -980,6 +999,72 @@ function cancelAdminLogin(){
  render();
 }
 function adminLogout(){logoutAll();}
+function openBookRecommendations(){
+ if(!supabaseAccessToken){showToast('Please sign in to view the Pack 873 book recommendations.');return;}
+ const dlg=document.getElementById('bookRecommendationsDialog'),rankSelect=document.getElementById('bookRecommendationRank');
+ const myProfile=users.find(u=>u.uuid===supabaseUserUuid);
+ rankSelect.value=myProfile?.denName||'';
+ document.getElementById('bookRecommendationDownload').classList.add('hidden');
+ document.getElementById('bookRecommendationRemoveBtn').classList.add('hidden');
+ document.getElementById('bookRecommendationStatus').textContent=rankSelect.value?'Loading the '+rankSelect.value+' reading list…':'Choose a rank to see its recommendation PDF.';
+ document.getElementById('bookRecommendationAdminTools').classList.toggle('hidden',!(viewer==='admin'&&adminAuthenticated));
+ dlg.showModal();if(rankSelect.value)loadRankBookRecommendation();
+}
+function closeBookRecommendations(){const dlg=document.getElementById('bookRecommendationsDialog');if(dlg.open)dlg.close();}
+async function recommendationStorageRequest(path,options={}){
+ const response=await fetch(SUPABASE_URL+'/storage/v1'+path,{...options,headers:{'apikey':SUPABASE_PUBLISHABLE_KEY,'Authorization':'Bearer '+supabaseAccessToken,...(options.headers||{})}});
+ let data={};try{data=await response.json();}catch(_e){}
+ if(!response.ok)throw new Error(data.message||data.error||('Storage request failed (HTTP '+response.status+').'));
+ return data;
+}
+function recommendationPath(rank){
+ if(!RECOMMENDATION_RANKS.includes(rank))throw new Error('Choose a valid Scout rank.');
+ return 'ranks/'+rank.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.pdf';
+}
+async function loadRankBookRecommendation(){
+ const rank=document.getElementById('bookRecommendationRank').value,status=document.getElementById('bookRecommendationStatus'),download=document.getElementById('bookRecommendationDownload'),removeBtn=document.getElementById('bookRecommendationRemoveBtn');
+ const isAdmin=viewer==='admin'&&adminAuthenticated;
+ document.getElementById('bookRecommendationAdminTools').classList.toggle('hidden',!isAdmin);download.classList.add('hidden');removeBtn.classList.add('hidden');
+ if(!rank){status.textContent='Choose a rank to see its recommendation PDF.';return;}
+ status.textContent='Checking for the '+rank+' reading list…';
+ try{
+  const path=recommendationPath(rank);
+  const result=await recommendationStorageRequest('/object/sign/'+RECOMMENDATION_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:3600,download:'Pack873-'+rank.replace(/\s+/g,'-')+'-Book-Recommendations.pdf'})});
+  const signed=result.signedURL||result.signedUrl;if(!signed)throw new Error('The PDF link could not be created.');
+  download.href=/^https?:\/\//i.test(signed)?signed:SUPABASE_URL+'/storage/v1'+(signed.startsWith('/')?signed:'/'+signed);
+  download.download='Pack873-'+rank.replace(/\s+/g,'-')+'-Book-Recommendations.pdf';download.textContent='⬇ Download '+rank+' Recommendations PDF';download.classList.remove('hidden');
+  removeBtn.classList.toggle('hidden',!isAdmin);status.textContent='The '+rank+' recommended reading PDF is ready.';
+ }catch(error){
+  const message=String(error.message||error),missing=/not found|object.*missing|no such object/i.test(message);
+  status.textContent=missing?(isAdmin?'No PDF is uploaded for '+rank+' yet. Choose a PDF below to add it.':'There is no reading-list PDF posted for '+rank+' yet. Please check back later.'):'Could not load this PDF: '+message+' If this continues, contact the Admin.';
+ }
+}
+async function uploadRankBookRecommendation(){
+ if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken){showToast('Admin access is required to update recommendation PDFs.');return;}
+ const rank=document.getElementById('bookRecommendationRank').value,input=document.getElementById('bookRecommendationFile'),file=input.files&&input.files[0],status=document.getElementById('bookRecommendationStatus');
+ if(!rank){status.textContent='Choose a Scout rank before uploading a PDF.';return;}
+ if(!file){status.textContent='Choose a PDF file to upload.';input.focus();return;}
+ if(!/\.pdf$/i.test(file.name)||(file.type&&file.type!=='application/pdf')){status.textContent='Please choose a PDF file.';input.value='';return;}
+ if(file.size>15*1024*1024){status.textContent='This PDF is larger than 15 MB. Choose a smaller file.';input.value='';return;}
+ const button=document.getElementById('bookRecommendationUploadBtn');button.disabled=true;button.textContent='Uploading…';status.textContent='Uploading the '+rank+' PDF…';
+ try{
+  const path=recommendationPath(rank);
+  await recommendationStorageRequest('/object/'+RECOMMENDATION_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{'Content-Type':'application/pdf','x-upsert':'true'},body:file});
+  input.value='';showToast(rank+' recommendation PDF uploaded.');await loadRankBookRecommendation();
+ }catch(error){status.textContent='Could not upload the PDF: '+String(error.message||error);}
+ finally{button.disabled=false;button.textContent='Upload / Replace PDF';}
+}
+async function removeRankBookRecommendation(){
+ if(viewer!=='admin'||!adminAuthenticated||!supabaseAccessToken){showToast('Admin access is required to remove recommendation PDFs.');return;}
+ const rank=document.getElementById('bookRecommendationRank').value;
+ if(!rank||!confirm('Remove the '+rank+' recommendation PDF? Readers will no longer be able to download it.'))return;
+ const button=document.getElementById('bookRecommendationRemoveBtn'),status=document.getElementById('bookRecommendationStatus');button.disabled=true;button.textContent='Removing…';
+ try{
+  await recommendationStorageRequest('/object/'+RECOMMENDATION_BUCKET,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({prefixes:[recommendationPath(rank)]})});
+  showToast(rank+' recommendation PDF removed.');await loadRankBookRecommendation();
+ }catch(error){status.textContent='Could not remove the PDF: '+String(error.message||error);}
+ finally{button.disabled=false;button.textContent='Remove PDF';}
+}
 function updatePermissions(){
  let isAdmin=viewer==='admin' && adminAuthenticated;
  const leaderboardAdminDescription=document.getElementById('leaderboardAdminDescription');if(leaderboardAdminDescription)leaderboardAdminDescription.classList.toggle('hidden',!isAdmin);
@@ -1011,6 +1096,11 @@ document.getElementById('adminPassword').onkeydown=function(e){
 
 document.getElementById('challengeSaveBtn').onclick=function(){saveChallenge();};
 document.getElementById('challengeCancelBtn').onclick=function(){document.getElementById('challengeDialog').close();};
+document.getElementById('bookRecommendationRank').addEventListener('change',loadRankBookRecommendation);
+document.getElementById('bookRecommendationsCloseBtn').addEventListener('click',closeBookRecommendations);
+document.getElementById('bookRecommendationsDialog').addEventListener('click',function(event){if(event.target===this)closeBookRecommendations();});
+document.getElementById('bookRecommendationUploadBtn').addEventListener('click',uploadRankBookRecommendation);
+document.getElementById('bookRecommendationRemoveBtn').addEventListener('click',removeRankBookRecommendation);
 document.getElementById('userSaveBtn').onclick=function(){addUser();};
 document.getElementById('userCancelBtn').onclick=function(){document.getElementById('userDialog').close();};
 document.getElementById('entrySaveBtn').onclick=function(){saveEntry();};
